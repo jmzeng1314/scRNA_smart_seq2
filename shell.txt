@@ -1,0 +1,36 @@
+# 安装RNA-seq数据处理流程
+# 代码参考：https://www.jianshu.com/p/a84cd44bac67
+# 视频教程见：https://www.bilibili.com/video/av28453557
+wget https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+source ~/.bashrc
+conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
+conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
+conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/bioconda
+conda config --set show_channel_urls yes
+conda create -n rna python=2 #创建名为rna的软件安装环境
+source activate rna
+
+conda install -y sra-tools  multiqc  trim-galore  subread hisat2
+
+## 走RNA-seq数据分析流程
+dump=/home/jianmingzeng/biosoft/sratoolkit/sratoolkit.2.9.2-centos_linux64/bin/fastq-dump
+ls ./sra/*  | while read id; do ( nohup $dump --gzip --split-3 -O ./ ${id} & ); done ## 批量转换sra到fq格式。
+
+hisat2=/home/jianmingzeng/biosoft/HISAT/hisat2-2.0.4/hisat2
+## 索引文件需要自己下载
+index=/home/jianmingzeng/reference/index/hisat/mm10/genome
+ls raw_fq/*gz |  while read id; do 
+$hisat2 -p 10 -x $index -U $id  -S ${id%%.*}.hisat.sam
+done 
+
+ls *.sam|while read id ;do (samtools sort -O bam -@ 5  -o $(basename ${id} ".sam").bam   ${id});done
+rm *.sam 
+ls *.bam |xargs -i samtools index {}
+
+## gtf文件推荐去gencode数据库下载
+gtf=/home/jianmingzeng/reference/gtf/gencode/gencode.vM12.annotation.gtf
+featureCounts=/home/jianmingzeng/biosoft/featureCounts/subread-1.5.3-Linux-x86_64/bin/featureCounts   
+$featureCounts -T 5 -p -t exon -g gene_id  -a $gtf -o  all.id.txt  *.bam  1>counts.id.log 2>&1 &
+  
+  
