@@ -15,10 +15,15 @@ conda install -y sra-tools  multiqc  trim-galore  subread hisat2
 
 ## 走RNA-seq数据分析流程
 dump=/home/jianmingzeng/biosoft/sratoolkit/sratoolkit.2.9.2-centos_linux64/bin/fastq-dump
+# 如果使用conda安装的 sra-tools ，那么 fastq-dump命令应该是在环境变量的。
 ls ./sra/*  | while read id; do ( nohup $dump --gzip --split-3 -O ./ ${id} & ); done ## 批量转换sra到fq格式。
 
 hisat2=/home/jianmingzeng/biosoft/HISAT/hisat2-2.0.4/hisat2
+# # 如果使用conda安装的 hisat2，那么 hisat2 命令应该是在环境变量的。
 ## 索引文件需要自己下载
+# https://ccb.jhu.edu/software/hisat2/manual.shtml
+# wget ftp://ftp.ccb.jhu.edu/pub/infphilo/hisat2/data/mm10.tar.gz
+
 index=/home/jianmingzeng/reference/index/hisat/mm10/genome
 ls raw_fq/*gz |  while read id; do 
 $hisat2 -p 10 -x $index -U $id  -S ${id%%.*}.hisat.sam
@@ -31,6 +36,7 @@ ls *.bam |xargs -i samtools index {}
 ## gtf文件推荐去gencode数据库下载
 gtf=/home/jianmingzeng/reference/gtf/gencode/gencode.vM12.annotation.gtf
 featureCounts=/home/jianmingzeng/biosoft/featureCounts/subread-1.5.3-Linux-x86_64/bin/featureCounts   
+# # # 如果使用conda安装的 subread，那么featureCounts  命令应该是在环境变量的。
 $featureCounts -T 5 -p -t exon -g gene_id  -a $gtf -o  all.id.txt  *.bam  1>counts.id.log 2>&1 &
   
   

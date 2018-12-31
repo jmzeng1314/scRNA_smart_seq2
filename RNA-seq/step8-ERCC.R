@@ -16,5 +16,7 @@ options(stringsAsFactors = F)
 load(file = '../input.Rdata')
 a[1:4,1:4]
 head(df)
+## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的细胞数量）
+# 注意 变量a是原始的counts矩阵，变量 dat是logCPM后的表达量矩阵。
 
 

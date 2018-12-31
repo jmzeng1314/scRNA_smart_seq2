@@ -16,8 +16,13 @@ options(stringsAsFactors = F)
 load(file = '../input.Rdata')
 a[1:4,1:4]
 head(df)
+
+## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的细胞数量）
+# 注意 变量a是原始的counts矩阵，变量 dat是logCPM后的表达量矩阵。
 group_list=df$g
 table(group_list)
+
+## 要完全掌握本代码，需要理解什么是热图，什么是PCA图。
 
 cg=names(tail(sort(apply(dat,1,sd)),1000))
 library(pheatmap)
@@ -66,7 +71,9 @@ if(T){
 
 
 
-## 下面是画PCA的必须操作，需要看说明书。
+## 下面是画PCA的必须操作，需要看不同做PCA的包的说明书。
+## 如果想了解PCA分析原理，需要阅读：https://mp.weixin.qq.com/s/Kw05PWD2m65TZu2Blhnl4w
+
 dat_back=dat
 dat=dat_back
 dat[1:4,1:4]
