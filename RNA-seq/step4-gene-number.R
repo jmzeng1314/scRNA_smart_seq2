@@ -17,12 +17,15 @@ load(file = '../input.Rdata')
 a[1:4,1:4]
 head(df) 
 
-## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的细胞数量）
-# 注意 变量a是原始的counts矩阵，变量 dat是logCPM后的表达量矩阵。
+## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的基因数量）
+# 注意 变量a是原始的counts矩阵，变量 dat是log2CPM后的表达量矩阵。
 group_list=df$g
 plate=df$plate
 table(plate)
- 
+
+### 绘图必须强推 ggpubr 
+## 搜索到代码，然后修改即可出美图。
+
 library(ggpubr)
 ggviolin(df, x = "all", y = "n_g", fill = "all", 
          add = "boxplot", add.params = list(fill = "white")) 

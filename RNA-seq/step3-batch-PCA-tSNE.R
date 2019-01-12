@@ -16,20 +16,24 @@ options(stringsAsFactors = F)
 load(file = '../input.Rdata')
 a[1:4,1:4]
 head(df) 
-## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的细胞数量）
-# 注意 变量a是原始的counts矩阵，变量 dat是logCPM后的表达量矩阵。
-group_list=df$g
-plate=df$plate
-table(plate)
+## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的基因数量）
+# 注意 变量a是原始的counts矩阵，变量 dat是log2CPM后的表达量矩阵。
+group_list=df$g #所有数据的聚类分组信息
+plate=df$plate #批次信息
+table(plate) 
 ## 这个时候需要从多个维度来探索两个不同的plate的单细胞群体是否有明显的差别。
 # plate=group_list
 
 ## 最流行的细胞群体是否有明显的差别，肯定是hclust分群，热图展现，PCA,tSNE 等等
 
 ## 如果想了解PCA分析原理，需要阅读：https://mp.weixin.qq.com/s/Kw05PWD2m65TZu2Blhnl4w
-
+## 首先我们使用简单的 prcomp 函数来了解 PCA分析
 if(F){
   set.seed(123456789)
+  #set.seed()产生随机数
+  #用于设定随机数种子，一个特定的种子可以产生一个特定的伪随机序列，这个函数的主要目的，
+  #是让你的模拟能够可重复出现，因为很多时候我们需要取随机数，但这段代码再跑一次的时候，
+  #结果就不一样了，如果需要重复出现同样的模拟结果的话，就可以用set.seed()。
   library(pheatmap)
   library(Rtsne)
   library(ggfortify)
@@ -37,23 +41,25 @@ if(F){
   
   ## 同样的正态分布随机表达矩阵，是无法区分开来。
   if(T){
-    ng=500
+    ng=500 
     nc=20
-    a1=rnorm(ng*nc);dim(a1)=c(ng,nc)
-    a2=rnorm(ng*nc);dim(a2)=c(ng,nc) 
+    a1=rnorm(ng*nc);dim(a1)=c(ng,nc) #创建正态分布随机矩阵500行，20列
+    #dim()检索或设置对象的维度
+    a2=rnorm(ng*nc);dim(a2)=c(ng,nc) #因为是随机创建，这两个矩阵不一样
     a3=cbind(a1,a2)
-    colnames(a3)=c(paste0('cell_01_',1:nc),paste0('cell_02_',1:nc))
-    rownames(a3)=paste('gene_',1:ng,sep = '')
+    colnames(a3)=c(paste0('cell_01_',1:nc),paste0('cell_02_',1:nc)) #添加列名
+    #paste()粘贴，
+    rownames(a3)=paste('gene_',1:ng,sep = '') #添加行名
     pheatmap(a3)
     a3=t(a3);dim(a3) ## PCA分析，需要把细胞放在列，基因放在行。
-    pca_dat <- prcomp(a3, scale. = TRUE)
+    pca_dat <- prcomp(a3, scale. = TRUE) #prcomp()主成分分析
     p=autoplot(pca_dat) + theme_classic() + ggtitle('PCA plot')
     print(p)
     # 可以看到细胞无法被区分开来。
     set.seed(42)
     tsne_out <- Rtsne(a3,pca=FALSE,perplexity=10,theta=0.0) # Run TSNE
     tsnes=tsne_out$Y
-    colnames(tsnes) <- c("tSNE1", "tSNE2")
+    colnames(tsnes) <- c("tSNE1", "tSNE2") #添加列名
     ggplot(tsnes, aes(x = tSNE1, y = tSNE2))+ geom_point()
   }
   
@@ -86,11 +92,12 @@ if(F){
     ng=600
     nc=200
     mu1  = rnorm(ng, mean = 1)
+    #rnorm()函数产生一系列的随机数，随机数个数，均值和标准差都可以设定
     mu2  = rnorm(ng, mean = 5)
-    a1=rmvnorm(nc,mu1);dim(a1)
+    a1=rmvnorm(nc,mu1);dim(a1) #rmvnorm随机生成多元正太分布数
     a2=rmvnorm(nc,mu2) ;dim(a2)
     
-    a3=rbind(a1,a2);dim(a3)
+    a3=rbind(a1,a2);dim(a3) #rbind()行进行合并，就是行的叠加
     rownames(a3)=c(paste0('cell_01_',1:nc),paste0('cell_02_',1:nc))
     colnames(a3)=paste('gene_',1:ng,sep = '')
     pheatmap(a3)
@@ -107,13 +114,14 @@ if(F){
   
 }
 
+## 然后我们 可以使用高级R包做真实的分析。
 ## 下面是画PCA的必须操作，需要看不同做PCA的包的说明书。
 dat_back=dat
 
 dat=dat_back
 dat=t(dat)
 dat=as.data.frame(dat)
-dat=cbind(dat,plate )
+dat=cbind(dat,plate ) #cbind根据列进行合并，即叠加所有列 #矩阵添加批次信息
 dat[1:4,1:4]
 table(dat$plate)
 
@@ -121,6 +129,7 @@ table(dat$plate)
 # Principal component analysis is underspecified if you have fewer samples than data point. 
 # pca_dat =  princomp(t(dat[,-ncol(dat)]))$scores[,1:2]
 pca_dat =  prcomp(t(dat[,-ncol(dat)])) 
+
 plot(pca_dat$rotation[,1:2], t='n')
 colors = rainbow(length(unique(dat$plate)))
 names(colors) = unique(dat$plate)
@@ -141,7 +150,8 @@ fviz_pca_ind(dat.pca,repel =T,
              legend.title = "Groups"
 )
 ## 事实上还是有很多基因dropout非常严重。
-ggsave('all_cells_PCA_by_plate.png')
+ggsave('all_cells_PCA_by_plate.png') 
+## 保存你的画布的图到本地图片文件。
 
 library(Rtsne) 
 dat_matrix <- as.matrix(dat[,-ncol(dat)])
@@ -166,7 +176,7 @@ ggscatter(df, x = "X", y = "Y", color = "g"
           # palette = c("#00AFBB", "#E7B800" ) 
           )
 
-
+## 下面是想说明一个错误的例子。
 if(F){
   library(tsne)
   ## Not run:

@@ -16,7 +16,8 @@ options(stringsAsFactors = F)
 load(file = '../input.Rdata')
 a[1:4,1:4]
 head(df) 
-## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的细胞数量）
+
+## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的基因数量）
 # 注意 变量a是原始的counts矩阵，变量 dat是logCPM后的表达量矩阵。
 
 group_list=df$g
@@ -26,12 +27,18 @@ table(plate)
 a[1:4,1:4]
 library(scran)
 # https://mp.weixin.qq.com/s/nFSa5hXuKHrGu_othopbWQ
-sce <- SingleCellExperiment(list(counts=dat))
+sce <- SingleCellExperiment(list(counts=dat)) 
+#list() 创建列表
+
 library(org.Mm.eg.db)
 mm.pairs <- readRDS(system.file("exdata", "mouse_cycle_markers.rds", 
                                 package="scran"))
+
 ensembl <- mapIds(org.Mm.eg.db, keys=rownames(sce), 
                   keytype="SYMBOL", column="ENSEMBL")
+#取探针名创建一个向量
+#rownames(sce) 取行名（即实验检测到的基因）
+
 if(F){
   assigned <- cyclone(sce, pairs=mm.pairs, gene.names=ensembl)
   save(assigned,file = 'cell_cycle_assigned.Rdata')
@@ -39,7 +46,7 @@ if(F){
 load(file = 'cell_cycle_assigned.Rdata')
 head(assigned$scores)
 table(assigned$phases)
-draw=cbind(assigned$score,assigned$phases)
+draw=cbind(assigned$score,assigned$phases) #合并assigned$score列和assigned$phases列
 colnames(draw)
 attach(draw)
 library(scatterplot3d)
