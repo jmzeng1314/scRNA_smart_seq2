@@ -47,19 +47,27 @@ if(F){
     #dim()检索或设置对象的维度
     a2=rnorm(ng*nc);dim(a2)=c(ng,nc) #因为是随机创建，这两个矩阵不一样
     a3=cbind(a1,a2)
-    colnames(a3)=c(paste0('cell_01_',1:nc),paste0('cell_02_',1:nc)) #添加列名
+    colnames(a3)=c(paste0('cell_01_',1:nc),
+                   paste0('cell_02_',1:nc)) #添加列名
     #paste()粘贴，
     rownames(a3)=paste('gene_',1:ng,sep = '') #添加行名
     pheatmap(a3)
-    a3=t(a3);dim(a3) ## PCA分析，需要把细胞放在列，基因放在行。
+    dist(a3)
+    a3=t(a3);dim(a3) ## PCA分析 
     pca_dat <- prcomp(a3, scale. = TRUE) #prcomp()主成分分析
     p=autoplot(pca_dat) + theme_classic() + ggtitle('PCA plot')
+    # df=cbind(as.data.frame(a3),group=c(rep('b1',20),rep('b2',20)))
+    # autoplot(prcomp( df[,1:(ncol(df)-1)] ), data=df,colour = 'group')+theme_bw()
     print(p)
     # 可以看到细胞无法被区分开来。
     set.seed(42)
     tsne_out <- Rtsne(a3,pca=FALSE,perplexity=10,theta=0.0) # Run TSNE
     tsnes=tsne_out$Y
     colnames(tsnes) <- c("tSNE1", "tSNE2") #添加列名
+   # group=c(rep('b1',20),rep('b2',20))
+   # tsnes=as.data.frame(tsnes)
+   #  tsnes$group=group
+   #  ggplot(tsnes, aes(x = tSNE1, y = tSNE2))+ geom_point(aes(col=group))
     ggplot(tsnes, aes(x = tSNE1, y = tSNE2))+ geom_point()
   }
   
@@ -73,7 +81,7 @@ if(F){
     colnames(a3)=c(paste0('cell_01_',1:nc),paste0('cell_02_',1:nc))
     rownames(a3)=paste('gene_',1:ng,sep = '')
     pheatmap(a3)
-    a3=t(a3);dim(a3) ## PCA分析，需要把细胞放在列，基因放在行。
+    a3=t(a3);dim(a3) ## PCA分析 
     
     pca_dat <- prcomp(a3, scale. = TRUE)
     p=autoplot(pca_dat) + theme_classic() + ggtitle('PCA plot')
@@ -101,6 +109,7 @@ if(F){
     rownames(a3)=c(paste0('cell_01_',1:nc),paste0('cell_02_',1:nc))
     colnames(a3)=paste('gene_',1:ng,sep = '')
     pheatmap(a3)
+    
     pca_dat <- prcomp(a3, scale. = TRUE)
     p=autoplot(pca_dat) + theme_classic() + ggtitle('PCA plot')
     print(p)
@@ -124,54 +133,81 @@ dat=as.data.frame(dat)
 dat=cbind(dat,plate ) #cbind根据列进行合并，即叠加所有列 #矩阵添加批次信息
 dat[1:4,1:4]
 table(dat$plate)
+# 
+# # 'princomp' can only be used with more units than variables
+# # Principal component analysis is underspecified if you have fewer samples than data point. 
+# # pca_dat =  princomp(t(dat[,-ncol(dat)]))$scores[,1:2]
+# pca_dat =  prcomp(t(dat[,-ncol(dat)])) 
+# 
+# plot(pca_dat$rotation[,1:2], t='n')
+# colors = rainbow(length(unique(dat$plate)))
+# names(colors) = unique(dat$plate)
+# text(pca_dat$rotation[ , 1:2], labels=dat$plate,col=colors[dat$plate])
+# 
 
-# 'princomp' can only be used with more units than variables
-# Principal component analysis is underspecified if you have fewer samples than data point. 
-# pca_dat =  princomp(t(dat[,-ncol(dat)]))$scores[,1:2]
-pca_dat =  prcomp(t(dat[,-ncol(dat)])) 
+rm(list = ls())  ## 魔幻操作，一键清空~
+options(stringsAsFactors = F)
+load(file = '../input_rpkm.Rdata')
+dat[1:4,1:4]
+head(metadata) 
+plate=metadata$plate
+## 下面是画PCA的必须操作，需要看不同做PCA的包的说明书。
+dat_back=dat
 
-plot(pca_dat$rotation[,1:2], t='n')
-colors = rainbow(length(unique(dat$plate)))
-names(colors) = unique(dat$plate)
-text(pca_dat$rotation[ , 1:2], labels=dat$plate,col=colors[dat$plate])
-
-
-
+dat=dat_back
+dat=t(dat)
+dat=as.data.frame(dat)
+dat=cbind(dat,plate ) #cbind根据列进行合并，即叠加所有列 #矩阵添加批次信息
+dat[1:4,1:4]
+table(dat$plate)
 library("FactoMineR")
 library("factoextra") 
 # The variable plate (index = ) is removed
 # before PCA analysis
 dat.pca <- PCA(dat[,-ncol(dat)], graph = FALSE)
-fviz_pca_ind(dat.pca,repel =T,
+fviz_pca_ind(dat.pca,#repel =T,
              geom.ind = "point", # show points only (nbut not "text")
-             col.ind = df$g, # color by groups
+             col.ind = dat$plate, # color by groups
              #palette = c("#00AFBB", "#E7B800"),
              addEllipses = TRUE, # Concentration ellipses
              legend.title = "Groups"
-)
-## 事实上还是有很多基因dropout非常严重。
+) 
 ggsave('all_cells_PCA_by_plate.png') 
 ## 保存你的画布的图到本地图片文件。
 
+## scater, monocle3, seurat 
+
 library(Rtsne) 
-dat_matrix <- as.matrix(dat[,-ncol(dat)])
-dat_matrix[1:4,1:4]
+load(file = '../input_rpkm.Rdata')
+dat[1:4,1:4]
+dat_matrix <- t(dat)
+
+if(F){
+  load(file = '../input.Rdata')
+  # dat is log2(cpm+1)
+  dat_matrix=t(dat)
+  dat_matrix[1:4,1:4]
+  
+}
+
+dat_matrix =log2(dat_matrix+0.01)
 # Set a seed if you want reproducible results
 set.seed(42)
 tsne_out <- Rtsne(dat_matrix,pca=FALSE,perplexity=30,theta=0.0) # Run TSNE
-
 # Show the objects in the 2D tsne representation
-plot(tsne_out$Y,col=dat$plate, asp=1)
+plot(tsne_out$Y,col= plate) # asp=1
 # https://distill.pub/nc16/misread-tsne/
+
+
 
 library(ggpubr)
 # Add marginal rug
 head(tsne_out$Y)
 df=as.data.frame(tsne_out$Y)
 colnames(df)=c("X",'Y')
-df$plate=dat$plate
+df$plate= plate
 head(df)
-df$g=group_list
+df$g=metadata$g
 ggscatter(df, x = "X", y = "Y", color = "g" 
           # palette = c("#00AFBB", "#E7B800" ) 
           )
@@ -180,10 +216,14 @@ ggscatter(df, x = "X", y = "Y", color = "g"
 if(F){
   library(tsne)
   ## Not run:
+  data(iris)
+  iris
   colors = rainbow(length(unique(iris$Species)))
   names(colors) = unique(iris$Species)
-  ecb = function(x,y){ plot(x,t='n'); text(x,labels=iris$Species, col=colors[iris$Species]) }
-  tsne_iris = tsne(iris[,1:4], epoch_callback = ecb, perplexity=ng)
+  colors
+  ecb = function(x,y){ plot(x,t='n'); text(x,labels=iris$Species, 
+                                           col=colors[iris$Species]) }
+  tsne_iris = tsne(iris[,1:4], epoch_callback = ecb, perplexity=50)
   head(iris[,1:4])
   
   library(Rtsne)

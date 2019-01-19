@@ -56,7 +56,7 @@ scatterplot3d(G1, S, G2M, angle=20,
 detach(draw)
 
 library(pheatmap)
-cg=names(tail(sort(apply(dat,1,sd)),1000))
+cg=names(tail(sort(apply(dat,1,sd)),100))
 n=t(scale(t(dat[cg,])))
 # pheatmap(n,show_colnames =F,show_rownames = F)
 library(pheatmap)
@@ -65,7 +65,7 @@ ac=df
 rownames(ac)=colnames(n)
 pheatmap(n,show_colnames =F,show_rownames = F,
          annotation_col=ac,
-         filename = 'all_cells_top_1000_sd_all_infor.png')
+         filename = 'all_cells_top_100_sd_all_infor.png')
 dev.off()
 head(ac)
 table(ac[,c(1,5)])
