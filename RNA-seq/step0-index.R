@@ -16,10 +16,6 @@ Sys.setenv(R_MAX_NUM_DLLS=999) ##Sys.setenv修改环境设置，R的namespace是
 options(stringsAsFactors = F) ##options:允许用户对工作空间进行全局设置，stringsAsFactors防止R自动把字符串string的列辨认成factor
 
 # http://www.bio-info-trainee.com/3727.html 周末生物信息学培训班准备工作
-library(BiocManager)
-
-if (!requireNamespace("BiocManager", quietly = TRUE)) 
-  install.packages("BiocManager") ##判断是否存在BiocManager包，不存在的话安装
 
 
 options()$repos  ## 查看使用install.packages安装时的默认镜像
@@ -28,6 +24,12 @@ options(BioC_mirror="https://mirrors.ustc.edu.cn/bioc/") ##指定镜像，这个
 options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")) ##指定install.packages安装镜像，这个是清华镜像
 options()$repos 
 options()$BioC_mirror
+
+if (!requireNamespace("BiocManager", quietly = TRUE)) 
+  install.packages("BiocManager") ##判断是否存在BiocManager包，不存在的话安装
+
+library(BiocManager)
+
 
 BiocManager::install(c( 'scran'),ask = F,update = F)
  
@@ -170,5 +172,13 @@ load(file = '../input.Rdata') ##从上级目录载入input.Rdata
 a[1:4,1:4] 
 dat[1:4,1:4] 
 head(df)
+
+load(file = '../input_rpkm.Rdata') ##从上级目录载入 input_rpkm.Rdata
+
+## 每次载入以前的变量，都是可以简单检查一下。
+#a[1:4,1:4] 
+dat[1:4,1:4] 
+head(metadata)
+
 
 

@@ -20,7 +20,7 @@ table(df$g)
 ## 载入第0步准备好的表达矩阵，及细胞的一些属性（hclust分群，plate批次，检测到的细胞数量）
 # 注意 变量a是原始的counts矩阵，变量 dat是logCPM后的表达量矩阵。
 exprSet=a[apply(a,1, function(x) sum(x>1) > floor(ncol(a)/50)),] 
-exprSet=exprSet[!grepl('ERCC',rownames(a)),]
+exprSet=exprSet[!grepl('ERCC',rownames(exprSet)),]
 group_list=ifelse(df$g==1,'me','other')
 table(group_list)
 library(edgeR)

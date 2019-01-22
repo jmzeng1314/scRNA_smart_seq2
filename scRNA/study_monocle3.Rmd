@@ -1,0 +1,129 @@
+---
+title: "Study_monocle3"
+author: "jmzeng1314@163.com"
+date: "1/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = TRUE)
+knitr::opts_chunk$set(message  = TRUE) 
+```
+
+
+## Introduction
+
+## Load necessary packages
+
+需要自行下载安装一些必要的R包！
+
+```{r}
+rm(list = ls()) # clear the environment
+#load all the necessary libraries
+options(warn=-1) # turn off warning message globally
+suppressMessages(library(reticulate))
+suppressMessages(library(devtools))
+suppressMessages(library(monocle))
+suppressMessages(library(flexclust))
+suppressMessages(library(mcclust))
+
+```
+
+
+## Create a cds object for MCA dataset
+
+使用网络公共数据，取决于网速，是浙江大学郭老师的40万小鼠单细胞转录组数据。
+
+第一个rds文件大小接近3G，太难下载了，即使侥幸下载，一般人的电脑也没办法处理它。
+
+第二个csv文件也有 26.5M 
+
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE72857 
+
+```{r,eval=F}
+MCA <- readRDS(gzcon(url("http://trapnell-lab.gs.washington.edu/public_share/MCA_merged_mat.rds")))
+    cell.meta.data <- read.csv(url("http://trapnell-lab.gs.washington.edu/public_share/MCA_All-batch-removed-assignments.csv"), row.names = 1)
+```
+
+39855 x 405191 sparse Matrix of class "dgCMatrix"
+ 
+```{r,eval=F}
+MCA
+```
+
+```{r,eval=F}
+overlapping_cells <- intersect(row.names(cell.meta.data), colnames(MCA))
+gene_ann <- data.frame(gene_short_name = row.names(MCA), row.names = row.names(MCA))
+
+pd <- new("AnnotatedDataFrame",
+          data=cell.meta.data[overlapping_cells, ])
+fd <- new("AnnotatedDataFrame",
+          data=gene_ann)
+
+MCA_cds <- newCellDataSet(
+  MCA[, overlapping_cells], 
+  phenoData = pd,
+  featureData =fd,
+  expressionFamily = negbinomial.size(),
+  lowerDetectionLimit=1)
+
+save(MCA_cds,file = '~/Downloads/MCA_cds_monocle_example.Rdata')
+    
+```
+
+全部载入后的数据在R里面如下：
+
+![](figures/MCA_dataset_in_R.jpg)
+
+但是数据集实在是太大，我这里只能载入前面步骤保存的小数据集
+```{r}
+load(file = '~/Downloads/MCA_cds_monocle_example.Rdata')
+```
+
+
+###  也可以切换小一点的数据集
+
+比如我们选择 scRNAseq 这个R包。
+这个包内置的是Pollen et al. 2014 数据集，而且只挑选 65个人类细胞，分成3类，分别是 pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞。 
+
+大小是50.6 MB，下载需要一点点数据，先安装加载它们。
+
+
+```{r}
+library(scRNAseq)
+## ----- Load Example Data -----
+data(fluidigm)
+# Set assay to RSEM estimated counts
+assay(fluidigm) = assays(fluidigm)$rsem_counts
+# List all qc fields (accessible via colData())
+metadata(fluidigm)$which_qc
+```
+
+这里面的表达矩阵是由 RSEM (Li and Dewey 2011) 软件根据 hg38 RefSeq transcriptome 得到的，总是130个文库，每个细胞测了两次，测序深度不一样。
+
+
+## Estimate size factor and dispersion
+
+## Reduce the dimensionality of the MCA dataset
+
+## Group cells into different clusters
+
+## Visualize the clustering results
+
+## How do clusters break down by tissue?
+
+## How do tissues break down by cluster?
+
+## How to choose the resolution for louvain clustering
+
+## Identify genes that are differentially expressed between clusters
+
+## Finding cluster-specific marker genes
+
+## Visualizing marker expression across cell clusters
+
+## Visualizing marker expression in UMAP plots
+
+
+
