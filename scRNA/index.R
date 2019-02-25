@@ -22,7 +22,7 @@ if(!require('monocle')){
 
 
 ## http://cole-trapnell-lab.github.io/monocle-release/monocle3/ 
-
+BiocManager::install('destiny')
 BiocManager::install(c( 'flexclust','mcclust'),ask = F,update = F)
 #ensure umap-learn 0.30 is installed
 py_install('umap-learn', pip = T, pip_ignore_installed = T)
