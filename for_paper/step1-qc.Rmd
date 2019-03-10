@@ -1,0 +1,22 @@
+---
+title: "step1-QC"
+author: "jmzeng1314@163.com"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(message  = F) 
+```
+
+
+
+## 显示运行环境
+
+```{r}
+sessionInfo()
+```
+
+

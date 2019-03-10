@@ -1,0 +1,85 @@
+---
+title: "step1-CV2-vs-Mean"
+author: "jmzeng1314@163.com"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(message  = F) 
+```
+
+文献描述是：
+Differentually expressed genes are detected using Reproducibility-optimized test statistic (ROTS), for each subgroup compared to the other subgroups.
+
+也就是说作者并没有使用3大单细胞转录组R包。
+
+## 载入RPKM矩阵
+
+```{r}
+load(file='RPKM.full.Rdata')
+load(file='CAFgroups.Rdata')
+```
+
+## 分开做4次差异分析
+
+运行速度非常慢，建议过夜等待，然后保存结果，方便重复使用。
+
+```{r,eval=FALSE}
+library(ROTS)
+library(plyr)
+groups<-CAFgroups
+groups[groups!=1]<-234
+
+ROTS_input<-RPKM.full[rowMeans(RPKM.full)>=1,]
+ROTS_input<-as.matrix(log2(ROTS_input+1))
+Sys.time()
+results_pop1 = ROTS(data = ROTS_input, groups = groups , B = 1000 , K = 500 , seed = 1234)
+Sys.time()
+summary_pop1<-data.frame(summary(results_pop1, fdr=1))
+
+groups<-CAFgroups
+groups[groups!=2]<-134
+Sys.time()
+results_pop2 = ROTS(data = ROTS_input, groups = groups , B = 1000 , K = 500 , seed = 1234)
+Sys.time()
+summary_pop2<-data.frame(summary(results_pop2, fdr=1))
+
+
+groups<-CAFgroups
+groups[groups!=3]<-124
+Sys.time()
+results_pop3 = ROTS(data = ROTS_input, groups = groups , B = 1000 , K = 500 , seed = 1234)
+Sys.time()
+summary_pop3<-data.frame(summary(results_pop3, fdr=1))
+
+
+groups<-CAFgroups
+groups[groups!=4]<-123
+Sys.time()
+results_pop4 = ROTS(data = ROTS_input, groups = groups , B = 1000 , K = 500 , seed = 1234)
+Sys.time()
+summary_pop4<-data.frame(summary(results_pop4, fdr=1))
+
+save(summary_pop1,summary_pop2,summary_pop3,summary_pop4,
+     file = 'ROTS_summary_pop.Rdata')
+```
+
+这里直接载入 ROTS 的差异分析结果即可。
+
+```{r}
+load(file = 'ROTS_summary_pop.Rdata')
+```
+
+
+## 显示运行环境
+
+```{r}
+sessionInfo()
+```
+
+
+
+
