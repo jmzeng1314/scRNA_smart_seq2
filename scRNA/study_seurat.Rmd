@@ -20,7 +20,9 @@ knitr::opts_chunk$set(message  = F)
 
 ## 载入必要的R包
 
-需要自行下载安装一些必要的R包！ 这里只展示安装稳定版的2.3版本
+需要自行下载安装一些必要的R包！ 这里只展示安装稳定版的2.3版本。
+
+因为大量学员在中国大陆，通常不建议大家使用下面的R包安装方法，建议是切换镜像后再下载R包。参考：http://www.bio-info-trainee.com/3727.html
 
 ```{r}
 if (!requireNamespace("BiocManager"))
@@ -56,10 +58,9 @@ devtools::install_github(repo = 'satijalab/seurat', ref = 'release/3.0')
 
 ## 创建测试数据集
 
-我们选择 scRNAseq 这个R包。
-这个包内置的是 Pollen et al. 2014 数据集，人类单细胞细胞，分成`4`类，分别是 pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞。 
+这个包内置的是 Pollen et al. 2014 数据集，人类单细胞细胞，分成**4类**，分别是 pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞，理解这些需要一定的生物学背景知识，如果不感兴趣，可以略过。
 
-大小是50.6 MB，下载需要一点点时间，先安装加载它们。
+这个R包大小是50.6 MB，下载需要一点点时间，先安装加载它们。
 
 这个数据集很出名，截止2019年1月已经有近400的引用了，后面的人开发R包算法都会在其上面做测试，比如 SinQC 这篇文章就提到：We applied SinQC to a highly heterogeneous scRNA-seq dataset containing 301 cells (mixture of 11 different cell types) (Pollen et al., 2014).
 
@@ -151,7 +152,10 @@ GenePlot(object = sce, gene1 = "nUMI", gene2 = "nGene")
 
 ```{r}
 tail(sort(Matrix::rowSums(sce@raw.data)))
+## 散点图可视化任意两个基因的一些属性（通常是细胞的度量）
 GenePlot(object = sce, gene1 = "SOX11", gene2 = "EEF1A1")
+# 散点图可视化任意两个细胞的一些属性（通常是基因的度量）
+
 CellPlot(sce,sce@cell.names[3],sce@cell.names[4],do.ident = FALSE)
 
 ```
@@ -186,9 +190,9 @@ sce <- FindVariableGenes(object = sce, mean.function = ExpMean, dispersion.funct
 length(sce@var.genes)
 ```
  
-## 对归一化后的矩阵进行分群
+## 对归一化后的矩阵进行去除混杂因素和降维
 
-对矩阵进行回归建模，以及scale
+对矩阵进行回归建模，以及scale,主要是为了去除一些文库大小，线粒体基因含量，ERCC含量等因素。
 
 ```{r}
 sce <- ScaleData(object = sce, 
@@ -199,7 +203,7 @@ sce <- ScaleData(object = sce,
 
 现在sce对象的 `sce@scale.data` 也有了数值
 
-运行PCA进行线性降维
+运行PCA进行线性降维，这里仅仅是挑选高变化的基因组成的表达矩阵进行PCA分析。
 
 ```{r}
 sce <- RunPCA(object = sce, 
@@ -245,9 +249,9 @@ PCHeatmap(object = sce,
 
 ```
 
-## 基于PCA情况看看细胞如何分群 
+## 基于PCA结果看看细胞如何分群 
 
-**重点**: 需要搞懂这里的 resolution 参数
+**重点**: 需要搞懂这里的 resolution 参数，而且降维算法可以选PCA或者ICA ， 分群算法也可以选择。
 
 ```{r}
 sce <- FindClusters(object = sce, 
@@ -260,6 +264,8 @@ table(sce@meta.data$res.0.9)
 ```
 
 ## 看单细胞分群后的tSNE图 
+
+跟前面的 RunPCA 函数功能差不多，都是为了降维。这里为了节省计算量，首先使用PCA的线性降维结果，再进行tSNE
 
 ```{r}
 sce <- RunTSNE(object = sce, 
@@ -281,7 +287,7 @@ TSNEPlot(object = sce,group.by = 'Biological_Condition')
 ## 对每个分类都寻找其marker基因
 
 ```{r}
-# 下面的代码是需要适应性修改，因为每次分组不一样，本次是3组。
+# 下面的代码是需要适应性修改，因为不同的数据集分组不一样，本次是3组，所以演示3组后的代码。
 markers_df <- FindMarkers(object = sce, ident.1 = 0, min.pct = 0.25)
 print(x = head(markers_df))
 markers_genes =  rownames(head(x = markers_df, n = 5))
@@ -343,6 +349,25 @@ DoHeatmap(object = sce, genes.use = top10$gene, slim.col.label = TRUE, remove.ke
             cols.use = c("grey", "blue"), 
             reduction.use = "tsne")
 ```
+
+## seurat总结
+
+`counts`矩阵进来后被包装为对象，方便操作。
+
+然后一定要经过 `NormalizeData` 和  `ScaleData` 的操作
+
+函数  `FindVariableGenes` 可以挑选适合进行下游分析的基因集。
+
+函数 `RunPCA` 和  `RunTSNE` 进行降维
+
+
+函数 `FindClusters` 直接就分群了，非常方便
+函数 `FindAllMarkers` 可以对分群后各个亚群找标志基因。
+
+函数 `FeaturePlot` 可以展示不同基因在所有细胞的表达量
+函数 `VlnPlot` 可以展示不同基因在不同分群的表达量差异情况
+函数 `DoHeatmap` 可以选定基因集后绘制热图
+
 
 ## 显示运行环境
 

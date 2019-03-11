@@ -11,7 +11,6 @@
 
 <meta name="author" content="jmzeng1314@163.com" />
 
-<meta name="date" content="2019-02-24" />
 
 <title>Study_scater</title>
 
@@ -124,7 +123,7 @@ $(document).ready(function () {
 
 <h1 class="title toc-ignore">Study_scater</h1>
 <h4 class="author"><em><a href="mailto:jmzeng1314@163.com">jmzeng1314@163.com</a></em></h4>
-<h4 class="date"><em>02/24/2019</em></h4>
+<h4 class="date"><em>11 March, 2019</em></h4>
 
 </div>
 
@@ -137,7 +136,7 @@ $(document).ready(function () {
 </div>
 <div id="r" class="section level2">
 <h2>载入必要的R包</h2>
-<p>需要自行下载安装一些必要的R包！</p>
+<p>需要自行下载安装一些必要的R包！ 因为大量学员在中国大陆，通常不建议大家使用下面的R包安装方法，建议是切换镜像后再下载R包。参考：<a href="http://www.bio-info-trainee.com/3727.html" class="uri">http://www.bio-info-trainee.com/3727.html</a></p>
 <pre class="r"><code>if (!requireNamespace(&quot;Rtsne&quot;))
     install.packages(&quot;Rtsne&quot;)
 if (!requireNamespace(&quot;BiocManager&quot;))
@@ -503,10 +502,13 @@ metadata(sce)$sc3$k_estimation</code></pre>
 <p>一步运行sc3的所有分析, 相当耗费时间</p>
 <p>这里<code>kn</code>表示的预估聚类数, 考虑到数据集是已知的，我们强行设置为4组, 具体数据要具体考虑。</p>
 <pre class="r"><code># 耗费时间
-kn &lt;- 4
+kn &lt;- 4 ## 这里可以选择 3:5 看多种分类结果。
 sc3_cluster &lt;- &quot;sc3_4_clusters&quot;
-
-sce &lt;- sc3(sce, ks = kn, biology = TRUE)</code></pre>
+Sys.time()</code></pre>
+<pre><code>## [1] &quot;2019-03-11 17:44:18 CST&quot;</code></pre>
+<pre class="r"><code>sce &lt;- sc3(sce, ks = kn, biology = TRUE)</code></pre>
+<pre class="r"><code>Sys.time()</code></pre>
+<pre><code>## [1] &quot;2019-03-11 17:45:06 CST&quot;</code></pre>
 <p>可视化展示部分, kn就是聚类数</p>
 <p>热图: 比较先验分类和SC3的聚类的一致性</p>
 <pre class="r"><code>sc3_plot_consensus(sce, k = kn, show_pdata = c(&quot;Biological_Condition&quot;,sc3_cluster))</code></pre>

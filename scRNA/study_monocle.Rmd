@@ -23,7 +23,8 @@ knitr::opts_chunk$set(message  = F)
 
 ## 载入必要的R包
 
-需要自行下载安装一些必要的R包！这里就是Monocle
+需要自行下载安装一些必要的R包！这里就是Monocle咯，因为大量学员在中国大陆，通常不建议大家使用下面的R包安装方法，建议是切换镜像后再下载R包。参考：http://www.bio-info-trainee.com/3727.html
+
 
 ```{r}
 if (!requireNamespace("BiocManager"))
@@ -237,7 +238,7 @@ lung_SCESet <- exportCDS(lung, 'Scater')
 
 ###  直接读取10X结果
 
-因为10X实在是太流行了，所以monocle跟seurat一样，也提供了直接读取10X上游分析结果的接口函数，因为本文数据来源于smart-seq2，所以并**不演示**下面的代码：
+因为10X实在是太流行了，所以monocle跟seurat一样，也提供了直接读取10X上游分析结果的接口函数（其实是使用另外一个R包），因为本文数据来源于smart-seq2，所以并**不演示**下面的代码：
 
 ```{r,eval=FALSE}
 cellranger_pipestance_path <- "/path/to/your/pipeline/output/directory"
@@ -313,7 +314,7 @@ cds
 
 ## 聚类
 
-单细胞转录组最重要的就是把细胞分群啦，这里可供选择的算法非常多, 这里仍然是选择最常用的tSNE吧：
+单细胞转录组最重要的就是把细胞分群啦，这里可供选择的算法非常多，我们首先演示PCA结果。
 
 ```{r}
 # 并不是所有的基因都有作用，所以先进行挑选，合适的基因用来进行聚类。
@@ -385,14 +386,15 @@ head(sig_genes[,c("gene_short_name", "pval", "qval")] )
 ```
 
 ```{r}
-plot_genes_jitter(cds[head(sig_genes$gene_short_name),], 
+cg=as.character(head(sig_genes$gene_short_name))
+plot_genes_jitter(cds[cg,], 
                   grouping = "Biological_Condition", ncol= 2)
 ```
 
 下面是不同的可视化参数的效果
 
 ```{r}
-plot_genes_jitter(cds[head(sig_genes$gene_short_name),],
+plot_genes_jitter(cds[cg,],
                   grouping = "Biological_Condition",
                   color_by = "Biological_Condition",
                   nrow= 3,
@@ -403,7 +405,7 @@ plot_genes_jitter(cds[head(sig_genes$gene_short_name),],
 
 ## 寻找marker基因
 
-
+使用起来有点复杂，需要预先给定好分组情况，具体大家自行看说明书吧，反正3个R包其实是共通的。
 
 ## 推断发育轨迹
 
@@ -447,7 +449,7 @@ plot_cell_trajectory(cds, color_by = "Biological_Condition")
 `plot_genes_in_pseudotime`可以展现marker基因，本例子随便选取了6个差异表达基因。
 
 ```{r}
-plot_genes_in_pseudotime(cds[head(sig_genes$gene_short_name),], 
+plot_genes_in_pseudotime(cds[cg,],
                          color_by = "Biological_Condition")
 
 

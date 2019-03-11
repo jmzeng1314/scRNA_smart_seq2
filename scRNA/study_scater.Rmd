@@ -23,6 +23,7 @@ knitr::opts_chunk$set(message  = F)
 ## 载入必要的R包
 
 需要自行下载安装一些必要的R包！
+因为大量学员在中国大陆，通常不建议大家使用下面的R包安装方法，建议是切换镜像后再下载R包。参考：http://www.bio-info-trainee.com/3727.html
 
 ```{r}
 if (!requireNamespace("Rtsne"))
@@ -354,10 +355,11 @@ rowData(sce)$feature_symbol <- rownames(rowData(sce))
 
 ```{r}
 # 耗费时间
-kn <- 4
+kn <- 4 ## 这里可以选择 3:5 看多种分类结果。
 sc3_cluster <- "sc3_4_clusters"
-
+Sys.time()
 sce <- sc3(sce, ks = kn, biology = TRUE)
+Sys.time()
 ```
 
 可视化展示部分, kn就是聚类数

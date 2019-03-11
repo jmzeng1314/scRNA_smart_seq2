@@ -15,7 +15,9 @@ knitr::opts_chunk$set(message  = F)
 
 需要自行下载安装一些必要的R包，主要是scRNAseq，然后是其它一些辅助包用来探索这个数据集。
 
-```{r}
+因为大量学员在中国大陆，通常不建议大家使用下面的R包安装方法，建议是切换镜像后再下载R包。参考：http://www.bio-info-trainee.com/3727.html
+
+```{r,eval=FALSE}
 if (!requireNamespace("Rtsne"))
     install.packages("Rtsne")
 if (!requireNamespace("FactoMineR"))
@@ -34,7 +36,7 @@ if (!requireNamespace("ROCR"))
     BiocManager::install("ROCR") 
 ```
 
-加载R包
+加载R包，前提是已经成功安装了。
 
 ```{r, message=FALSE}
 rm(list = ls()) # clear the environment
@@ -53,17 +55,18 @@ library("ROCR")
 
 ##  scRNAseq R包中的数据集
 
-这个包内置的是 Pollen et al. 2014 数据集，人类单细胞细胞，分成**4类**，分别是 pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞。 
+这个包内置的是 Pollen et al. 2014 数据集，人类单细胞细胞，分成**4类**，分别是 pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞，理解这些需要一定的生物学背景知识，如果不感兴趣，可以略过。
 
-大小是50.6 MB，下载需要一点点时间，先安装加载它们。
+这个R包大小是50.6 MB，下载需要一点点时间，先安装加载它们。
 
-这个数据集很出名，截止2019年1月已经有近400的引用了，后面的人开发R包算法都会在其上面做测试，比如 SinQC 这篇文章就提到：We applied SinQC to a highly heterogeneous scRNA-seq dataset containing 301 cells (mixture of 11 different cell types) (Pollen et al., 2014).
+这个数据集很出名，截止2019年1月已经有近400的引用了，后面的人开发`R包算法`都会在其上面做测试，比如 SinQC 这篇文章就提到：We applied SinQC to a highly heterogeneous scRNA-seq dataset containing 301 cells (mixture of 11 different cell types) (Pollen et al., 2014).
 
 不过本例子只使用了数据集的**4种细胞类型**而已，因为 scRNAseq 这个R包就提供了这些，完整的数据是 23730 features，
-301 samples, 地址为<https://hemberg-lab.github.io/scRNA.seq.datasets/human/tissues/>
+301 samples, 地址为<https://hemberg-lab.github.io/scRNA.seq.datasets/human/tissues/> ， 这个网站非常值得推荐，简直是一个宝藏。
 
 
 这里面的表达矩阵是由 RSEM (Li and Dewey 2011) 软件根据 hg38 RefSeq transcriptome 得到的，总是130个文库，每个细胞测了两次，测序深度不一样。
+ 
 
 
 ```{r}
@@ -73,6 +76,7 @@ data(fluidigm)
 ct <- floor(assays(fluidigm)$rsem_counts)
 ct[1:4,1:4] 
 sample_ann <- as.data.frame(colData(fluidigm))
+DT::datatable(sample_ann)
 ```
 
 ## 先探索表型信息
@@ -94,9 +98,9 @@ plot_grid(plotlist=box, ncol=5 )
 # ggsave(file="stat_all_cells.pdf")
 ```
 
-很明显，他们可以有根据来进行分组，这里不再演示。 不过通常的文章并不会考虑如此多的细节
+很明显，他们可以有根据来进行分组，这里不再演示。 不过通常的文章并不会考虑如此多的细节，这里重点是批量，代码技巧非常值得你们学校。
 
-因为进行了简单探索，对表型数据就有了把握，接下来可以进行一定程度的过滤，因为细节太多，这里为了展现批量处理方式，就不考虑太多。
+因为进行了简单探索，对表型数据就有了把握，接下来可以进行一定程度的过滤，因为细节太多，这里重点是批量，代码技巧非常值得你们学校。
 
 ```{r}
 pa <- colnames(sample_ann[,c(1:9,11:16,18,19)])
@@ -195,7 +199,19 @@ table(group_list,sample_ann$Biological_Condition)
 
 可以看到GW16和GW21是很难区分开来的，如果是普通的层次聚类的话。
 
-### 然后看看最常规的PCA结果
+### 然后看看最常规的PCA降维结果
+
+降维算法很多，详情可以去自行搜索学习，比如： 
+
+1. 主成分分析PCA
+2. 多维缩放(MDS)
+3. 线性判别分析(LDA)
+4. 等度量映射(Isomap)
+5. 局部线性嵌入(LLE)
+6. t-SNE
+7. Deep Autoencoder Networks
+
+这里只介绍 PCA 和 t-SNE
 
 ```{r}
 dat <- dat_back
@@ -229,9 +245,10 @@ fviz_pca_ind(
 
 ### 接着是稍微高大上的tSNE降维
 
-这一步暂时不测试
+因为计算量的问题，这里先选取PCA后的主成分，然进行tSNE，当然，也有其它做法，比如选取变化高的基因，显著差异基因等等。
 
-```{r,eval=F}
+```{r }
+# 选取前面PCA分析的5个主成分。
 dat_matrix <- dat.pca$ind$coord
 # Set a seed if you want reproducible results
 set.seed(42)
@@ -241,8 +258,32 @@ library(Rtsne)
 # tsne_out <- Rtsne(dat_matrix,pca=FALSE,perplexity=30,theta=0.0, check_duplicates = FALSE) # Run TSNE
 tsne_out <- Rtsne(dat_matrix,perplexity=10)
 plate <- sample_ann$Biological_Condition # 这里定义分组信息
-plot(tsne_out$Y,col= rainbow(4)[as.numeric(as.factor(plate))]) 
+plot(tsne_out$Y,col= rainbow(4)[as.numeric(as.factor(plate))], pch=19) 
 ```
+
+### 对PCA或者tSNE结果进行kmeans或者dbscan算法聚类
+
+降维是降维，聚类是聚类，需要理解其中的区别。
+
+降维与否，不同的降维算法选择，不同参数的选择得到的结果都不一样。
+
+聚类也是一样，不同的算法，不同的参数。
+
+```{r}
+# 前面我们的层次聚类是针对全部表达矩阵，这里我们为了节省计算量，可以使用tsne_out$Y这个结果
+head(tsne_out$Y)
+opt_tsne=tsne_out$Y
+table(kmeans(opt_tsne,centers = 4)$clust)
+plot(opt_tsne,  col=kmeans(opt_tsne,centers = 4)$clust, pch=19, xlab="tSNE dim 1", ylab="tSNE dim 2")
+library(dbscan)
+plot(opt_tsne,  col=dbscan(opt_tsne,eps=3.1)$cluster, pch=19, xlab="tSNE dim 1", ylab="tSNE dim 2")
+table(dbscan(opt_tsne,eps=3.1)$cluster)
+# 比较两个聚类算法区别
+table(kmeans(opt_tsne,centers = 4)$clust,dbscan(opt_tsne,eps=3.1)$cluster)
+
+```
+
+
 
 ## 测试一下M3Drop这个单细胞转录组R包
 
@@ -326,30 +367,17 @@ heat_out <- M3DropExpressionHeatmap(choosed_marker_genes, Normalized_data$data, 
 
 如果遇到`Error in plot.new() : figure margins too large`报错，则单独将`heat_out`这行命令复制出来运行
 
+## 对感兴趣基因集进行注释
+
+通常是GO/KEGG等数据库，通常是超几何分布，GSEA,GSVA等算法。
+
+这里就略过。
+
+
 ## 显示运行环境
 
 ```{r}
 sessionInfo()
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
