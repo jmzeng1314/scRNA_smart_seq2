@@ -1,5 +1,5 @@
 ---
-title: "step1-CV2-vs-Mean"
+title: "step3-DEG-by-ROTS"
 author: "jmzeng1314@163.com"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
@@ -71,7 +71,34 @@ save(summary_pop1,summary_pop2,summary_pop3,summary_pop4,
 
 ```{r}
 load(file = 'ROTS_summary_pop.Rdata')
+head(summary_pop1)
+head(summary_pop2)
+head(summary_pop3)
+head(summary_pop4)
 ```
+
+
+## 每个亚群挑选top18的差异基因绘制热图
+
+```{r}
+population_subset<-c(rownames(summary_pop1[summary_pop1$ROTS.statistic<0,])[1:18],rownames(summary_pop2[summary_pop2$ROTS.statistic<0,])[1:18],rownames(summary_pop3[summary_pop3$ROTS.statistic<0,])[1:18],rownames(summary_pop4[summary_pop4$ROTS.statistic<0,])[1:18])
+RPKM_heatmap<-RPKM.full[population_subset,]
+
+RPKM_heatmap<-RPKM_heatmap[,order(CAFgroups_full$cluster)]
+RPKM_heatmap<-log2(RPKM_heatmap+1)
+
+popul.col<-sort(CAFgroups_full$cluster)
+popul.col<-replace(popul.col, popul.col==1,"#1C86EE" )
+popul.col<-replace(popul.col, popul.col==2,"#00EE00" )
+popul.col<-replace(popul.col, popul.col==3,"#FF9912" )
+popul.col<-replace(popul.col, popul.col==4,"#FF3E96" )
+library(gplots)
+
+#pdf("heatmap_genes_population.pdf")
+heatmap.2(as.matrix(RPKM_heatmap),ColSideColors = as.character(popul.col), tracecol = NA, dendrogram = "none",col=bluered, labCol = FALSE, scale="none", key = TRUE, symkey = F, symm=F,  key.xlab = "", key.ylab = "", density.info = "density", key.title = "log2(RPKM+1)", keysize = 1.2, denscol="black", Colv=FALSE)
+# dev.off()
+```
+
 
 
 ## 显示运行环境

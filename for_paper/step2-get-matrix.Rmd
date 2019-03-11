@@ -1,5 +1,5 @@
 ---
-title: "step1-CV2-vs-Mean"
+title: "step2-get-matrix"
 author: "jmzeng1314@163.com"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
@@ -15,7 +15,7 @@ knitr::opts_chunk$set(message  = F)
 
 ## 把counts值进行过滤并且储存为R数据
 
-需要读取作者GitHub项目的文件SS2_15_0048里面的counts值矩阵文件，然后进行一系列的过滤手段。
+需要读取作者GitHub项目的文件SS2_15_0048里面的counts值矩阵文件，然后进行一系列的过滤手段。https://github.com/KPLab/SCS_CAF 
 
 考虑到GitHub文件大小限制，下面的部分代码不运行。
 
@@ -70,7 +70,7 @@ QC过后的counts矩阵被保存为R对象保存为文件，所以现在可以�
 
 ```{r}
 load(file = 'expr_raw_counts.Rdata')
-
+expr_raw[1:4,1:4]
 #PLOT CV^2 vs. MEAN RAW COUNT
 library("matrixStats")
 mean_expr_raw<-as.numeric(rowMeans(expr_raw,na.rm=TRUE))
@@ -100,6 +100,8 @@ save(COUNTS,file='last-COUNTS.Rdata')
 
 load(file='last-COUNTS.Rdata')
 counts=COUNTS
+counts[1:4,1:4]
+
 fivenum(apply(counts,1,function(x) sum(x>0) ))
 boxplot(apply(counts,1,function(x) sum(x>0) ))
 
@@ -170,10 +172,10 @@ expr_rpkm_ercc<-expr_rpkm_ercc[rowMeans(expr_rpkm_ercc)>=1,]
 
 现在可以检查一下过滤后的矩阵
 
-```{r}
+```{r,eval=F}
 
 load(file = 'expr_raw_rpkm.Rdata')
-
+expr_rpkm[1:4,1:4]
 #PLOT CV^2 vs. MEAN RPKM
 library("matrixStats")
 mean_expr_rpkm<-as.numeric(rowMeans(expr_rpkm,na.rm=TRUE))
@@ -200,7 +202,7 @@ save(RPKM.full,file='RPKM.full.Rdata') ## 找差异基因
 
 ```
 
-对最后的 RPKM 矩阵进行详细检查
+## 对最后的 RPKM 矩阵进行详细检查
 
 
 ```{r}
@@ -217,9 +219,23 @@ hist(apply(dat,2,function(x) sum(x>0) ))
 ```
 
 
-这个RPKM矩阵会进入下一步分析
+这个 `RPKM` 矩阵会进入下一步分析, 主要是降维和聚类。
+
+## 对最后的 RPKM.full 矩阵进行详细检查
 
 
+```{r}
+load(file='RPKM.full.Rdata')
+dat=RPKM.full
+dim(dat)
+fivenum(apply(dat,1,function(x) sum(x>0) ))
+boxplot(apply(dat,1,function(x) sum(x>0) ))
+
+fivenum(apply(dat,2,function(x) sum(x>0) ))
+hist(apply(dat,2,function(x) sum(x>0) ))
+```
+
+这个 `RPKM.full` 矩阵会进入下一步分析, 主要是差异分析及表达量可视化。
 
 ## 显示运行环境
 
