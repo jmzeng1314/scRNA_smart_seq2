@@ -1,0 +1,883 @@
+---
+title: "compare 4 R packages for scRNAseq"
+author: "jmzeng1314@163.com"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document: 
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(message  = F) 
+```
+
+## 安装并且加载必要的包
+
+需要自行下载安装一些必要的R包，包括我们的测试数据集来源的R包`scRNAseq` ，以及4个单细胞转录组数据处理包！
+
+因为大量学员在中国大陆，所以需要特别的R包安装方法，就是切换镜像后再下载R包。参考：http://www.bio-info-trainee.com/3727.html
+
+```{r}
+options()$repos  ## 查看使用install.packages安装时的默认镜像
+options()$BioC_mirror ##查看使用bioconductor的默认镜像
+options(BioC_mirror="https://mirrors.ustc.edu.cn/bioc/") ##指定镜像，这个是中国科技大学镜像
+options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")) ##指定install.packages安装镜像，这个是清华镜像
+options()$repos 
+options()$BioC_mirror
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager") 
+if(!require('Seurat')){
+  BiocManager::install('Seurat',ask = F,update = F)
+}
+if(!require('scater')){
+  BiocManager::install(c( 'scater'),ask = F,update = F)
+}
+if(!require('monocle')){
+  BiocManager::install(c( 'monocle'),ask = F,update = F)
+}
+if(!require('scRNAseq')){
+  BiocManager::install(c( 'scRNAseq'),ask = F,update = F)
+}
+if(!require('SC3')){
+  BiocManager::install(c( 'SC3'),ask = F,update = F)
+}
+if(!require('M3Drop')){
+  BiocManager::install(c( 'M3Drop'),ask = F,update = F)
+}
+if(!require('ggpubr')){
+  BiocManager::install(c( 'ggpubr'),ask = F,update = F)
+}
+```
+
+安装成功后就可以加载R包：
+
+```{r, message=FALSE}
+rm(list = ls())  
+options(warn=-1)  
+suppressMessages(library(scater))
+suppressMessages(library(Seurat))
+suppressMessages(library(monocle))
+suppressMessages(library(scRNAseq)) 
+suppressMessages(library(SC3)) 
+suppressMessages(library(M3Drop)) 
+```
+
+## 简单了解数据集
+
+这个包内置的是 Pollen et al. 2014 数据集，人类单细胞细胞，分成**4类**，分别是 pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞，理解这些需要一定的生物学背景知识，如果不感兴趣，可以略过。
+
+这个数据集很出名，截止2019年1月已经有近400的引用了，后面的人开发`R包算法`都会在其上面做测试，本例子只使用了数据集的**4种细胞类型**而已，因为 scRNAseq 这个R包就提供了这些，完整的数据是 23730 features，
+301 samples, 地址为<https://hemberg-lab.github.io/scRNA.seq.datasets/human/tissues/> ， 这个网站非常值得推荐，简直是一个宝藏。
+
+
+这里面的表达矩阵是由 RSEM (Li and Dewey 2011) 软件根据 hg38 RefSeq transcriptome 得到的，总是130个文库，每个细胞测了两次，测序深度不一样（非常的不一样）
+
+```{r}
+library(scRNAseq)
+## ----- Load Example Data -----
+data(fluidigm) 
+ct <- floor(assays(fluidigm)$rsem_counts)
+ct[1:4,1:4] 
+sample_ann <- as.data.frame(colData(fluidigm))
+DT::datatable(sample_ann,
+              
+            rownames= FALSE,extensions = c('Scroller'), 
+            options = list(  
+  pageLength = 10, 
+  lengthMenu = list(c(10, 50, 100,-1), c('10', '50','100', 'All')),
+  columnDefs = list(list(className = 'dt-center', targets = 0 :8)),
+  scrollX = TRUE,
+  fixedHeader = TRUE,
+  fixedColumns = TRUE ,
+  deferRender = TRUE 
+),
+filter = 'top',
+escape = FALSE
+)
+```
+
+### 先探索表型信息
+
+前面说到，这个数据集是130个文库，每个细胞测了两次，测序深度不一样，这130个细胞，分成4类，分别是： pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞。 
+
+批量，粗略的看一看各个细胞的一些统计学指标的分布情况
+
+```{r fig.width=10, fig.height=15}
+library(ggpubr)
+box <- lapply(colnames(sample_ann[,1:19]),function(i) {
+    dat <-  sample_ann[,i,drop=F] 
+    dat$sample=rownames(dat)
+    dat$group='all cells'
+    ## 画boxplot 
+   p <- ggboxplot(dat, x = "group", y = i, 
+                add = "jitter" )
+ p
+})
+plot_grid(plotlist=box, ncol=5 )
+# ggsave(file="stat_all_cells.pdf")
+```
+
+很明显，他们可以有根据来进行分组，这里不再演示。 不过通常的文章并不会考虑如此多的细节，这里重点是批量，代码技巧非常值得你们学校。
+
+因为进行了简单探索，对表型数据就有了把握，接下来可以进行一定程度的过滤，因为细节太多，这里重点是批量，代码技巧非常值得你们学校。
+
+```{r}
+pa <- colnames(sample_ann[,c(1:9,11:16,18,19)])
+tf <- lapply(pa,function(i) {
+ # i=pa[1]
+  dat <-  sample_ann[,i]  
+  dat <- abs(log10(dat))
+  fivenum(dat)
+  (up <- mean(dat)+2*sd(dat))
+  (down <- mean(dat)- 2*sd(dat) ) 
+  valid <- ifelse(dat > down & dat < up, 1,0 ) 
+})
+
+tf <- do.call(cbind,tf)
+choosed_cells <- apply(tf,1,function(x) all(x==1))
+table(sample_ann$Biological_Condition)
+sample_ann=sample_ann[choosed_cells,]
+table(sample_ann$Biological_Condition)
+ct <- ct[,choosed_cells]
+```
+
+
+### 再探索基因表达情况
+
+```{r}
+ct[1:4,1:4] 
+counts <- ct
+fivenum(apply(counts,1,function(x) sum(x>0) ))
+boxplot(apply(counts,1,function(x) sum(x>0) ))
+fivenum(apply(counts,2,function(x) sum(x>0) ))
+hist(apply(counts,2,function(x) sum(x>0) ))
+choosed_genes=apply(counts,1,function(x) sum(x>0) )>0
+table(choosed_genes)
+counts <- counts[choosed_genes,]
+```
+
+## 单细胞转录组分析流程介绍
+
+注意，这里的 seurat是2.x版本，同理，monocle也是2版本。
+
+
+| 用法                           | Seurat                                                       | scater                                                       | monocle                                                      |
+| ------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| 创建R包要求的对象              | CreateSeuratObject                                           | SingleCellExperiment                                         | newCellDataSet                                               |
+| QC and selecting cell          | 创建矩阵的同时，可以选择过滤参数min.cell，min.gene等。还有FilterCells函数可以去除不合格的细胞。 | calculateQCMetrics()函数，其中的feature_controls参数可以指定过滤指标，然后有一系列的可视化函数 | 用基础R函数进行初步过滤，还可以用detectGenes()函数加上subset()过滤 |
+| 表达量的标准化或者归一化       | NormalizeData                                                | calculateCPM()等系列函数                                     | estimateSizeFactors()还有estimateDispersions                 |
+| 寻找重要的基因                 | FindVariableGenes                                            | 没有看到专门的函数，可以借用R基础函数                        | differentialGeneTest()函数                                   |
+| 去除干扰因素                   | ScaleData                                                    | 借用limma包的  removeBatchEffect 函数                        | 去除干扰因素的功能被包装在降维函数中                         |
+| 降维                           | RunPCA或者RunTSNE                                            | runPCA或者runTSNE，runDiffusionMap                           | reduceDimension函数，可以选择多种参数                        |
+| 降维后可视化                   | VizPCA和PCElbowPlot;PCAPlot或者TSNEPlot                      | plotPCA和plotTSNE等等                                        | plot_cell_trajectory()或plot_genes_in_pseudotime             |
+| 分类群cluster                  | FindClusters                                                 | 并没有包装聚类函数，而且辅助其它R包，或者R基础函数           | clusterCells                                                 |
+| 聚类后找每个细胞亚群的标志基因 | FindMarkers和FindAllMarkers函数                              | 借助SC3包                                                    | newCellTypeHierarchy classifyCells 
+calculateMarkerSpecificity |
+
+
+### step1: 创建对象
+
+首先为 scater 包创建对象
+
+```{r}
+pheno_data <- as.data.frame(colData(fluidigm))
+ct <- floor(assays(fluidigm)$rsem_counts)
+## 这里需要把Pollen的表达矩阵做成我们的 scater 要求的对象
+# data("sc_example_counts")
+# data("sc_example_cell_info") 
+# 你也可以尝试该R包自带的数据集。
+# 参考 https://bioconductor.org/packages/release/bioc/vignettes/scater/inst/doc/vignette-intro.R
+sce_scater <- SingleCellExperiment(
+    assays = list(counts = ct), 
+    colData = pheno_data
+    )
+sce_scater
+# 后面所有的分析都是基于 sce_scater 这个变量
+# 是一个 SingleCellExperiment 对象，被很多单细胞R包采用。
+```
+
+然后为 seurat 包创建对象
+
+```{r}
+meta <- as.data.frame(colData(fluidigm))
+ct <- floor(assays(fluidigm)$rsem_counts)
+counts <- ct
+sce_seurat <- CreateSeuratObject(raw.data = counts, 
+                             meta.data =meta,
+                             min.cells = 3, 
+                             min.genes = 200, 
+                             project = "Pollen")
+sce_seurat
+## 后续所有的分析都基于这个 sce_seurat 变量，是一个对象 
+```
+
+最后为 monocle 包创建对象
+
+```{r}
+ct <- floor(assays(fluidigm)$rsem_counts)
+gene_ann <- data.frame(
+  gene_short_name = row.names(ct), 
+  row.names = row.names(ct)
+)
+sample_ann=as.data.frame(colData(fluidigm))
+pd <- new("AnnotatedDataFrame",
+          data=sample_ann)
+fd <- new("AnnotatedDataFrame",
+          data=gene_ann)
+sce_monocle <- newCellDataSet(
+  ct, 
+  phenoData = pd,
+  featureData =fd,
+  expressionFamily = negbinomial.size(),
+  lowerDetectionLimit=1)
+sce_monocle
+```
+
+再次回顾一下这3个对象。
+
+```{r}
+sce_seurat
+sce_scater
+sce_monocle
+```
+
+
+### step2: 质量控制
+
+在 `seurat` 包， 
+
+```{r}
+mito.genes <- grep(pattern = "^MT-", 
+                   x = rownames(sce_seurat@data), 
+                   value = TRUE)
+# 恰好这个例子的表达矩阵里面没有线粒体基因
+percent.mito <- Matrix::colSums(sce_seurat@raw.data[mito.genes, ]) / Matrix::colSums(sce_seurat@raw.data)
+## 也可以加入很多其它属性，比如 ERCC 等。
+
+# AddMetaData adds columns to object@meta.data, and is a great place to stash QC stats
+sce_seurat <- AddMetaData(object = sce_seurat, 
+                          metadata = percent.mito,
+                         col.name = "percent.mito")
+VlnPlot(object = sce_seurat, 
+        features.plot = c("nGene", "nUMI", "percent.mito"), 
+        group.by = 'Biological_Condition', nCol = 3)
+GenePlot(object = sce_seurat, gene1 = "nUMI", gene2 = "nGene")
+CellPlot(sce_seurat,
+         sce_seurat@cell.names[3],
+         sce_seurat@cell.names[4],
+         do.ident = FALSE)
+# FilterCells函数
+# sce_seurat
+# sce_seurat <- FilterCells(object = sce_seurat, 
+#                     subset.names = c("nGene", "percent.mito"), 
+#                     low.thresholds = c(200, -Inf), 
+#                     high.thresholds = c(2500, 0.05))
+# sce_seurat
+```
+
+
+在scater包， 
+
+这里仅仅是演示 scater 包最简单的质量控制代码，详细代码见：https://bioconductor.org/packages/release/bioc/vignettes/scater/inst/doc/vignette-qc.html
+
+```{r} 
+genes <- rownames(rowData(sce_scater))
+genes[grepl('^MT-',genes)]
+genes[grepl('^ERCC-',genes)] 
+exprs(sce_scater) <- log2(
+    calculateCPM(sce_scater ) + 1)
+keep_feature <- rowSums(exprs(sce_scater) > 0) > 0
+table(keep_feature)
+sce_scater <- sce_scater[keep_feature,]
+sce_scater 
+
+sce_scater <- calculateQCMetrics(sce_scater)
+plotHighestExprs(sce_scater, exprs_values = "counts")
+plotExprsFreqVsMean(sce_scater)
+```
+
+在`monocle`包，
+
+```{r} 
+sce_monocle
+## 起初是 
+sce_monocle <- detectGenes(sce_monocle, min_expr = 0.1)
+print(head(fData(sce_monocle)))
+expressed_genes <- row.names(subset(fData(sce_monocle),
+                                    num_cells_expressed >= 5))
+length(expressed_genes)
+sce_monocle <- sce_monocle[expressed_genes,]
+sce_monocle
+# 过滤基因后是  
+tmp=pData(sce_monocle)
+fivenum(tmp[,1])
+fivenum(tmp[,30])
+# 这里并不需要过滤细胞，如果想过滤，就自己摸索阈值，然后挑选细胞即可。
+# 这里留下来了所有的细胞。
+valid_cells <- row.names(pData(sce_monocle) )
+sce_monocle <- sce_monocle[,valid_cells]
+sce_monocle 
+```
+
+
+### step3: 表达量的标准化和归一化
+
+在 seurat包需要先假定平均细胞测序文库大小，这里是 10000 
+
+```{r}
+sce_seurat <- NormalizeData(object = sce_seurat, 
+                     normalization.method = "LogNormalize", 
+                     scale.factor = 10000,
+                     display.progress = F)
+```
+
+在scater包：
+
+```{r}
+assays(sce_scater)
+
+counts(sce_scater) <- assays(sce_scater)$counts
+norm_exprs(sce_scater) <- log2(calculateCPM(sce_scater, use_size_factors = FALSE) + 1)
+
+stand_exprs(sce_scater) <- log2(calculateCPM(sce_scater, use_size_factors = FALSE) + 1)
+
+tpm(sce_scater) <- calculateTPM(sce_scater, effective_length = 5e4)
+
+cpm(sce_scater) <- calculateCPM(sce_scater, use_size_factors = FALSE)
+
+assays(sce_scater)
+```
+
+详细理论见：https://hemberg-lab.github.io/scRNA.seq.course/cleaning-the-expression-matrix.html#normalization-theory
+
+- 7.8.1 Raw
+- 7.8.2 CPM
+- 7.8.3 Size-factor (RLE)
+- 7.8.4 Upperquantile
+- 7.8.5 TMM
+- 7.8.6 scran
+- 7.8.7 Downsampling
+
+在`monocle`包，
+
+```{r}
+colnames(phenoData(sce_monocle)@data)
+sce_monocle <- estimateSizeFactors(sce_monocle)
+sce_monocle <- estimateDispersions(sce_monocle)
+colnames(phenoData(sce_monocle)@data)
+```
+
+
+### step4: 去除干扰因素
+
+在 seurat 包，去除一些文库大小，线粒体基因含量，ERCC含量等因素的功能被包装在 ScaleData 函数里面，前提是需要被去除的因素提供 AddMetaData 函数添加到了对象。
+
+```{r }
+sce_seurat <- ScaleData(object = sce_seurat, 
+                 vars.to.regress = c("nUMI"),
+                 display.progress = F)
+## 所有放在 vars.to.regress 参数的变量均可以被去除
+```
+
+在scater包， 主要是可视化那些干扰因素：
+
+```{r}
+sce_scater <- runPCA(sce_scater)
+# colnames(colData(sce_scater))
+plotPCA(
+    sce_scater, 
+    colour_by = "Biological_Condition",
+    size_by = "NALIGNED"
+)
+# 还有 plotQC 函数。
+
+```
+
+如果需要去除干扰因素，可以借用limma包的  removeBatchEffect 函数
+
+```{r,eval=F}
+library(limma)
+batch <- rep(1:2, each=20)
+corrected <- removeBatchEffect(logcounts(example_sce), block=batch)
+assay(example_sce, "corrected_logcounts") <- corrected
+```
+
+
+
+在monocle包，去除干扰因素的功能被包装在降维函数中，示例如下：
+
+```{r,eval=FALSE}
+# 放在 residualModelFormulaStr 里面的是需要去除的
+cds <- reduceDimension(cds, max_components = 2, num_dim = 2,
+                        reduction_method = 'tSNE',
+                        residualModelFormulaStr = "~Biological_Condition + num_genes_expressed",
+                        verbose = T)
+cds <- clusterCells(cds, num_clusters = 2)
+plot_cell_clusters(cds, 1, 2, color = "Biological_Condition")
+
+## 上面去除了Biological_Condition，所以接下来聚类它们就被打散了。
+```
+
+
+
+### step5: 判断重要的基因
+
+寻找波动比较明显的基因，后续用这些基因而非全部基因进行分析，主要为了降低计算量。
+
+在  `seurat` 包，必须要先 `normalization` ，然后才能进行`FindVariableGenes` 计算，代码如下：
+
+```{r}
+sce_seurat <- FindVariableGenes(object = sce_seurat, 
+                                mean.function = ExpMean,
+                                dispersion.function = LogVMR, 
+                         x.low.cutoff = 0.0125, 
+                         x.high.cutoff = 3, 
+                         y.cutoff = 0.5)
+# 通过调整参数可以得到不同数量的 var.genes
+length(sce_seurat@var.genes)
+```
+
+在`scater`包， 没有看到专门的函数，可以借用R基础函数。
+
+
+在 `monocle` 包中，同样也不是所有的基因都有作用，所以先进行挑选，合适的基因才在后续分析中用来降维聚类。
+
+```{r}
+disp_table <- dispersionTable(sce_monocle)
+# 也可以先挑选差异基因
+unsup_clustering_genes <- subset(disp_table, mean_expression >= 0.1)
+dim(unsup_clustering_genes)
+sce_monocle <- setOrderingFilter(sce_monocle,
+                                 unsup_clustering_genes$gene_id)
+plot_ordering_genes(sce_monocle) 
+plot_pc_variance_explained(sce_monocle, return_all = F) 
+# norm_method='log'
+```
+
+后面做降维的时候的 `num_dim` 参数选择基于上面的PCA图
+
+
+### step6: 多种降维算法
+
+在 `seurat` 包， 降维之前必须要先 `Run ScaleData()` , 每个降维算法都被单独包装为函数了。
+
+```{r}
+sce_seurat <- RunPCA(object = sce_seurat, 
+              pc.genes = sce_seurat@var.genes, 
+              do.print = TRUE, 
+              pcs.print = 1:5, 
+              genes.print = 5)
+sce_seurat@dr
+tmp <- sce_seurat@dr$pca@gene.loadings
+sce_seurat <- RunTSNE(object = sce_seurat, 
+               dims.use = 1:10, 
+               do.fast = TRUE, 
+               perplexity=10)
+sce_seurat@dr 
+```
+
+
+在`scater`包， 
+
+```{r} 
+sce <- runPCA(sce_scater)
+# 这里并没有进行任何基因的挑选，就直接进行了PCA，与 seurat包不一样。
+reducedDimNames(sce) 
+sce <- runPCA(sce, ncomponents=20)
+# Perplexity of 10 just chosen here arbitrarily. 
+set.seed(1000)
+# 这里的这个 perplexity 参数很重要
+sce <- runTSNE(sce, perplexity=30)
+sce <- runDiffusionMap(sce)
+reducedDimNames(sce)
+sce_scater=sce
+```
+
+
+在`monocle`包，降维函数就是 `reduceDimension` ， 它包装这一个去除干扰因素的功能, 可供选择的降维算法包括: 
+`"DDRTree",
+  "ICA", "tSNE", "SimplePPT", "L1-graph", "SGL-tree"` 
+
+```{r }
+# 放在 residualModelFormulaStr 参数里面的是需要去除的
+sce_monocle <- reduceDimension(sce_monocle, 
+                               max_components = 2, num_dim = 2,
+                        reduction_method = 'tSNE', 
+                        verbose = T)
+ 
+```
+
+
+### step7: 可视化降维结果
+
+在 seurat 包， 两个降维算法被单独包装为两个函数，所以可视化也是两个函数。
+
+```{r}
+sce_seurat@dr 
+PCAPlot(sce_seurat, dim.1 = 1, dim.2 = 2,
+        group.by = 'Biological_Condition')
+TSNEPlot(sce_seurat,group.by = 'Biological_Condition')
+
+VizPCA( sce_seurat, pcs.use = 1:2)
+PCElbowPlot(object = sce_seurat)
+sce_seurat <- ProjectPCA(sce_seurat, do.print = FALSE)
+PCHeatmap(object = sce_seurat, 
+          pc.use = 1, 
+          cells.use = ncol(sce_seurat@data), 
+          do.balanced = TRUE, 
+          label.columns = FALSE)
+```
+
+
+在scater包， 同样的是多个降维函数和多个可视化函数
+
+```{r}
+plotTSNE(sce_scater,  
+         colour_by = "Biological_Condition" )
+plotPCA(sce_scater, 
+        colour_by = "Biological_Condition" )
+plotPCA(sce_scater, ncomponents = 4,  
+        colour_by = "Biological_Condition" )
+
+plotDiffusionMap(sce_scater,  
+                 colour_by = "Biological_Condition" )
+
+```
+
+在monocle包，有趣的是降维后必须先分群才能进行可视化。
+
+```{r}
+sce_monocle <- clusterCells(sce_monocle, num_clusters = 4)
+plot_cell_clusters(sce_monocle, 1, 2, color = "Biological_Condition")
+```
+
+
+### step8: 多种聚类算法
+
+聚类后就可以根据阈值进行分群
+
+在 `seurat` 包， **重点**: 需要搞懂这里的 resolution 参数，而且降维算法可以选PCA或者ICA ， 分群算法也可以选择。
+
+```{r}
+sce_seurat <- FindClusters(object = sce_seurat, 
+                    reduction.type = "pca", 
+                    dims.use = 1:10, force.recalc = T,
+                    resolution = 0.9, print.output = 0,
+                    save.SNN = TRUE)
+PrintFindClustersParams(sce_seurat)
+table(sce_seurat@meta.data$res.0.9)
+```
+
+在`scater`包， 并没有包装聚类函数，而且辅助其它R包，或者R基础函数：
+
+-  SC3
+-  pcaReduce
+-  tSNE + kmeans
+-  SNN-Cliq
+-  SINCERA
+
+最常用的是无缝连接 `SC3` 包：
+
+```{r}
+library(SC3) # BiocManager::install('SC3')
+sce <- sc3_estimate_k(sce_scater)
+metadata(sce)$sc3$k_estimation
+rowData(sce)$feature_symbol <- rownames(rowData(sce))
+```
+
+一步运行sc3的所有分析, 相当耗费时间
+
+这里`kn`表示的预估聚类数, 考虑到数据集是已知的，我们强行设置为4组, 具体数据要具体考虑。
+
+```{r}
+# 耗费时间
+kn <- 4 ## 这里可以选择 3:5 看多种分类结果。
+sc3_cluster <- "sc3_4_clusters"
+Sys.time()
+sce <- sc3(sce, ks = kn, biology = TRUE)
+Sys.time()
+```
+
+
+
+在`monocle`包，如下：
+
+```{r}
+sce_monocle <- clusterCells(sce_monocle, num_clusters = 4)
+plot_cell_clusters(sce_monocle)
+plot_cell_clusters(sce_monocle, 1, 2, color = "Biological_Condition")
+```
+
+可供选择的聚类算法包括：` densityPeak, louvian and DDRTree`
+
+
+### step9: 聚类后找每个细胞亚群的标志基因
+
+在`seurat`包， 
+
+```{r}
+sce.markers <- FindAllMarkers(object = sce_seurat, only.pos = TRUE, min.pct = 0.25, 
+                              thresh.use = 0.25)
+# DT::datatable(sce.markers)
+library(dplyr)
+sce.markers %>% group_by(cluster) %>% top_n(2, avg_logFC)
+top10 <- sce.markers %>% group_by(cluster) %>% top_n(10, avg_logFC)
+
+```
+
+可以单独可视化这些标志基因。
+
+```{r fig.width=10, fig.height=10}
+# setting slim.col.label to TRUE will print just the cluster IDS instead of# every cell name
+DoHeatmap(object = sce_seurat, 
+          genes.use = top10$gene, 
+          slim.col.label = TRUE, 
+          remove.key = TRUE)
+
+```
+
+
+在`scater`包，可视化展示部分, kn就是聚类数，就能看到标志基因了。
+
+热图: 比较先验分类和SC3的聚类的一致性
+
+```{r}
+sc3_plot_consensus(sce, k = kn, show_pdata = c("Biological_Condition",sc3_cluster))
+```
+
+展示表达量信息
+
+```{r}
+sc3_plot_expression(sce, k = kn, show_pdata =  c("Biological_Condition",sc3_cluster))
+```
+
+展示可能的标记基因
+
+```{r}
+sc3_plot_markers(sce, k = kn, show_pdata =  c("Biological_Condition",sc3_cluster))
+```
+
+在PCA上展示SC3的聚类结果
+
+```{r}
+plotPCA(sce, colour_by =  sc3_cluster )
+# sc3_interactive(sce)
+```
+
+
+
+在`monocle`包，应该是没有找标志基因的函数，但是有推断差异基因的函数，而且它多一个功能，就是进行发育轨迹的推断。
+推断发育轨迹才是monocle的拿手好戏，也是它荣升为3大R包的核心竞争力。
+
+
+第一步: 挑选合适的基因. 有多个方法，例如提供已知的基因集，这里选取统计学显著的差异基因列表
+
+```{r}
+Sys.time()
+cds=sce_monocle
+diff_test_res <- differentialGeneTest(cds,
+                                      fullModelFormulaStr = "~Biological_Condition")
+Sys.time()
+# 可以看到运行耗时
+
+# Select genes that are significant at an FDR < 10%
+sig_genes <- subset(diff_test_res, qval < 0.1)
+head(sig_genes[,c("gene_short_name", "pval", "qval")] )
+
+ordering_genes <- row.names (subset(diff_test_res, qval < 0.01))
+cds <- setOrderingFilter(cds, ordering_genes)
+plot_ordering_genes(cds) 
+
+```
+
+第二步: 降维。降维的目的是为了更好的展示数据。函数里提供了很多种方法, 不同方法的最后展示的图都不太一样, 其中“DDRTree”是Monocle2使用的默认方法
+
+```{r}
+cds <- reduceDimension(cds, max_components = 2,
+                            method = 'DDRTree')
+```
+
+第三步: 对细胞进行排序
+
+```{r}
+cds <- orderCells(cds)
+
+```
+
+最后两个可视化函数，对结果进行可视化
+
+```{r}
+plot_cell_trajectory(cds, color_by = "Biological_Condition")  
+```
+
+可以很明显看到细胞的发育轨迹，正好对应  pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这时间进展的孕期细胞。 
+
+
+`plot_genes_in_pseudotime`可以展现marker基因
+
+最开始挑选合适基因，除了我们演示的找统计学显著的差异表达基因这个方法外，还可以于已知的标记基因，主要是基于生物学背景知识。
+
+如果是已知基因列表，就需要自己读取外包文件，导入R里面来分析。
+
+
+### step10: 继续分类
+
+只需要挑选前面步骤分类好的细胞，去表达矩阵里面进行筛选细胞，重新走一遍上面的流程即可。
+
+
+### 一些总结：
+
+首先是：seurat总结
+
+`counts`矩阵进来后被包装为对象，方便操作。
+
+然后一定要经过 `NormalizeData` 和  `ScaleData` 的操作
+
+函数  `FindVariableGenes` 可以挑选适合进行下游分析的基因集。
+
+函数 `RunPCA` 和  `RunTSNE` 进行降维
+
+
+函数 `FindClusters` 直接就分群了，非常方便
+函数 `FindAllMarkers` 可以对分群后各个亚群找标志基因。
+
+函数 `FeaturePlot` 可以展示不同基因在所有细胞的表达量
+函数 `VlnPlot` 可以展示不同基因在不同分群的表达量差异情况
+函数 `DoHeatmap` 可以选定基因集后绘制热图
+
+
+## 使用M3Drop包
+
+### 首先构建M3Drop需要的对象
+
+```{r,message=F,warning=F}
+library(M3Drop) 
+Normalized_data <- M3DropCleanData(counts, 
+                                   labels = sample_ann$Biological_Condition , 
+                                   is.counts=TRUE, min_detected_genes=2000)
+dim(Normalized_data$data)
+length(Normalized_data$labels)
+class(Normalized_data)
+str(Normalized_data)
+```
+
+这个包设计比较简单，并没有构建S4对象，只是一个简单的list而已。 
+
+### 统计学算法 Michaelis-Menten
+
+需要深入读该文章，了解其算法，这里略过，总之它对单细胞转录组的表达矩阵进行了一系列的统计检验。
+
+```{r}
+fits <- M3DropDropoutModels(Normalized_data$data)
+
+# Sum absolute residuals
+data.frame(MM=fits$MMFit$SAr, Logistic=fits$LogiFit$SAr,
+           DoubleExpo=fits$ExpoFit$SAr) 
+# Sum squared residuals
+data.frame(MM=fits$MMFit$SSr, Logistic=fits$LogiFit$SSr,
+           DoubleExpo=fits$ExpoFit$SSr)
+```
+
+
+### 找差异基因
+
+```{r}
+DE_genes <- M3DropDifferentialExpression(Normalized_data$data, 
+                                         mt_method="fdr", mt_threshold=0.01)
+dim(DE_genes)
+head(DE_genes)
+```
+
+这里是针对上面的统计结果来的
+
+### 针对差异基因画热图
+
+```{r fig.width=10, fig.height=10}
+par(mar=c(1,1,1,1)) 
+heat_out <- M3DropExpressionHeatmap(DE_genes$Gene, Normalized_data$data, 
+                                    cell_labels = Normalized_data$labels)
+```
+
+可视化了解一下找到的差异基因在不同的细胞类型的表达分布情况。
+
+### 聚类
+
+这里可以重新聚类后，针对自己找到的类别来分别找marker基因，不需要使用测试数据自带的表型信息。
+ 
+```{r} 
+cell_populations <- M3DropGetHeatmapCellClusters(heat_out, k=4)
+library("ROCR") 
+marker_genes <- M3DropGetMarkers(Normalized_data$data, cell_populations)
+table(cell_populations,Normalized_data$labels)
+```
+
+### 每个类别的marker genes
+
+```{r}
+head(marker_genes[marker_genes$Group==4,],20) 
+marker_genes[rownames(marker_genes)=="FOS",] 
+```
+
+也可以针对这些 marker genes去画热图，当然，得根据AUC和P值来挑选符合要求的差异基因去绘图。
+
+```{r fig.width=10, fig.height=10}
+par(mar=c(1,1,1,1)) 
+choosed_marker_genes=as.character(unlist(lapply(
+  split(marker_genes,marker_genes$Group), 
+  function(x) (rownames(head(x,20)))
+                                                )))
+heat_out <- M3DropExpressionHeatmap(choosed_marker_genes, 
+                                    Normalized_data$data,
+                                    cell_labels =  cell_populations)
+```
+
+如果遇到`Error in plot.new() : figure margins too large`报错，则单独将`heat_out`这行命令复制出来运行
+
+## 对感兴趣基因集进行注释
+
+通常是GO/KEGG等数据库，通常是超几何分布，GSEA,GSVA等算法。
+
+拿到基因集后走我GitHub代码即可：https://github.com/jmzeng1314/GEO  简单的例子如下：
+
+```{r,eval=FALSE}
+library(ggplot2)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+# 下面的 gene_up 是一个 entrez ID的向量，约 500左右的 自定义的基因集
+## 下面的 gene_all 也是一个 entrez ID的向量，约10000左右的背景基因，就我们的scRNA检测到的全部基因。
+  ###   over-representation test
+  kk.up <- enrichKEGG(gene         = gene_up,
+                      organism     = 'hsa',
+                      universe     = gene_all,
+                      pvalueCutoff = 0.9,
+                      qvalueCutoff =0.9)
+  head(kk.up)[,1:6]
+  dotplot(kk.up );ggsave('kk.up.dotplot.png')
+```
+
+
+
+
+## 其它单细胞R包
+
+包括：
+
+- scran
+- SINCERA
+- SC3
+
+不一一讲解，具体有需求，就仔细研读说明书，其实最后都是R语言熟练与否。
+
+## 显示运行环境
+
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
