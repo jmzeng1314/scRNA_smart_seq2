@@ -1,0 +1,112 @@
+---
+title: "step3-DEG-by-ROTS"
+author: "jmzeng1314@163.com"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(message  = F) 
+```
+
+文献描述是：
+Differentually expressed genes are detected using Reproducibility-optimized test statistic (ROTS), for each subgroup compared to the other subgroups.
+
+也就是说作者并没有使用3大单细胞转录组R包。
+
+## 载入RPKM矩阵
+
+```{r}
+load(file='RPKM.full.Rdata')
+load(file='CAFgroups.Rdata')
+```
+
+## 分开做4次差异分析
+
+运行速度非常慢，建议过夜等待，然后保存结果，方便重复使用。
+
+```{r,eval=FALSE}
+library(ROTS)
+library(plyr)
+groups<-CAFgroups
+groups[groups!=1]<-234
+
+ROTS_input<-RPKM.full[rowMeans(RPKM.full)>=1,]
+ROTS_input<-as.matrix(log2(ROTS_input+1))
+Sys.time()
+results_pop1 = ROTS(data = ROTS_input, groups = groups , B = 1000 , K = 500 , seed = 1234)
+Sys.time()
+summary_pop1<-data.frame(summary(results_pop1, fdr=1))
+
+groups<-CAFgroups
+groups[groups!=2]<-134
+Sys.time()
+results_pop2 = ROTS(data = ROTS_input, groups = groups , B = 1000 , K = 500 , seed = 1234)
+Sys.time()
+summary_pop2<-data.frame(summary(results_pop2, fdr=1))
+
+
+groups<-CAFgroups
+groups[groups!=3]<-124
+Sys.time()
+results_pop3 = ROTS(data = ROTS_input, groups = groups , B = 1000 , K = 500 , seed = 1234)
+Sys.time()
+summary_pop3<-data.frame(summary(results_pop3, fdr=1))
+
+
+groups<-CAFgroups
+groups[groups!=4]<-123
+Sys.time()
+results_pop4 = ROTS(data = ROTS_input, groups = groups , B = 1000 , K = 500 , seed = 1234)
+Sys.time()
+summary_pop4<-data.frame(summary(results_pop4, fdr=1))
+
+save(summary_pop1,summary_pop2,summary_pop3,summary_pop4,
+     file = 'ROTS_summary_pop.Rdata')
+```
+
+这里直接载入 ROTS 的差异分析结果即可。
+
+```{r}
+load(file = 'ROTS_summary_pop.Rdata')
+head(summary_pop1)
+head(summary_pop2)
+head(summary_pop3)
+head(summary_pop4)
+```
+
+
+## 每个亚群挑选top18的差异基因绘制热图
+
+```{r}
+population_subset<-c(rownames(summary_pop1[summary_pop1$ROTS.statistic<0,])[1:18],rownames(summary_pop2[summary_pop2$ROTS.statistic<0,])[1:18],rownames(summary_pop3[summary_pop3$ROTS.statistic<0,])[1:18],rownames(summary_pop4[summary_pop4$ROTS.statistic<0,])[1:18])
+RPKM_heatmap<-RPKM.full[population_subset,]
+
+RPKM_heatmap<-RPKM_heatmap[,order(CAFgroups_full$cluster)]
+RPKM_heatmap<-log2(RPKM_heatmap+1)
+
+popul.col<-sort(CAFgroups_full$cluster)
+popul.col<-replace(popul.col, popul.col==1,"#1C86EE" )
+popul.col<-replace(popul.col, popul.col==2,"#00EE00" )
+popul.col<-replace(popul.col, popul.col==3,"#FF9912" )
+popul.col<-replace(popul.col, popul.col==4,"#FF3E96" )
+library(gplots)
+
+#pdf("heatmap_genes_population.pdf")
+heatmap.2(as.matrix(RPKM_heatmap),ColSideColors = as.character(popul.col), tracecol = NA, dendrogram = "none",col=bluered, labCol = FALSE, scale="none", key = TRUE, symkey = F, symm=F,  key.xlab = "", key.ylab = "", density.info = "density", key.title = "log2(RPKM+1)", keysize = 1.2, denscol="black", Colv=FALSE)
+# dev.off()
+```
+
+
+
+## 显示运行环境
+
+```{r}
+sessionInfo()
+```
+
+
+
+

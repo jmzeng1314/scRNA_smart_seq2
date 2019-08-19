@@ -1,0 +1,383 @@
+---
+title: "study_scRNAseq"
+author: "jmzeng1314@163.com"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(message  = F) 
+```
+
+## 安装并且加载scRNAseq
+
+需要自行下载安装一些必要的R包，主要是scRNAseq，然后是其它一些辅助包用来探索这个数据集。
+
+因为大量学员在中国大陆，通常不建议大家使用下面的R包安装方法，建议是切换镜像后再下载R包。参考：http://www.bio-info-trainee.com/3727.html
+
+```{r,eval=FALSE}
+if (!requireNamespace("Rtsne"))
+    install.packages("Rtsne")
+if (!requireNamespace("FactoMineR"))
+    install.packages("FactoMineR")
+if (!requireNamespace("factoextra"))
+    install.packages("factoextra")
+if (!requireNamespace("BiocManager"))
+    install.packages("BiocManager")
+if (!requireNamespace("scater"))
+    BiocManager::install("scater")
+if (!requireNamespace("scRNAseq"))
+    BiocManager::install("scRNAseq") 
+if (!requireNamespace("M3Drop"))
+    BiocManager::install("M3Drop") 
+if (!requireNamespace("ROCR"))
+    BiocManager::install("ROCR") 
+```
+
+加载R包，前提是已经成功安装了。
+
+```{r, message=FALSE}
+rm(list = ls()) # clear the environment
+#load all the necessary libraries
+options(warn=-1) # turn off warning message globally
+suppressMessages(library(scater))
+suppressMessages(library(scRNAseq))
+library(ggplot2)
+library(tidyr)
+library(cowplot)
+library("FactoMineR")
+library("factoextra")
+library("ROCR")
+```
+
+
+##  scRNAseq R包中的数据集
+
+这个包内置的是 Pollen et al. 2014 数据集，人类单细胞细胞，分成**4类**，分别是 pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞，理解这些需要一定的生物学背景知识，如果不感兴趣，可以略过。
+
+这个R包大小是50.6 MB，下载需要一点点时间，先安装加载它们。
+
+这个数据集很出名，截止2019年1月已经有近400的引用了，后面的人开发`R包算法`都会在其上面做测试，比如 SinQC 这篇文章就提到：We applied SinQC to a highly heterogeneous scRNA-seq dataset containing 301 cells (mixture of 11 different cell types) (Pollen et al., 2014).
+
+不过本例子只使用了数据集的**4种细胞类型**而已，因为 scRNAseq 这个R包就提供了这些，完整的数据是 23730 features，
+301 samples, 地址为<https://hemberg-lab.github.io/scRNA.seq.datasets/human/tissues/> ， 这个网站非常值得推荐，简直是一个宝藏。
+
+
+这里面的表达矩阵是由 RSEM (Li and Dewey 2011) 软件根据 hg38 RefSeq transcriptome 得到的，总是130个文库，每个细胞测了两次，测序深度不一样。
+ 
+
+
+```{r}
+library(scRNAseq)
+## ----- Load Example Data -----
+data(fluidigm) 
+ct <- floor(assays(fluidigm)$rsem_counts)
+ct[1:4,1:4] 
+sample_ann <- as.data.frame(colData(fluidigm))
+DT::datatable(sample_ann)
+```
+
+## 先探索表型信息
+
+前面说到，这个数据集是130个文库，每个细胞测了两次，测序深度不一样，这130个细胞，分成4类，分别是： pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞。 
+
+批量，粗略的看一看各个细胞的一些统计学指标的分布情况
+
+```{r fig.width=10, fig.height=15}
+box <- lapply(colnames(sample_ann[,1:19]),function(i) {
+    dat <-  sample_ann[,i,drop=F] 
+    dat$sample=rownames(dat)
+    ## 画boxplot 
+   ggplot(dat, aes('all cells', get(i))) +
+          geom_boxplot() +
+          xlab(NULL)+ylab(i)
+})
+plot_grid(plotlist=box, ncol=5 )
+# ggsave(file="stat_all_cells.pdf")
+```
+
+很明显，他们可以有根据来进行分组，这里不再演示。 不过通常的文章并不会考虑如此多的细节，这里重点是批量，代码技巧非常值得你们学校。
+
+因为进行了简单探索，对表型数据就有了把握，接下来可以进行一定程度的过滤，因为细节太多，这里重点是批量，代码技巧非常值得你们学校。
+
+```{r}
+pa <- colnames(sample_ann[,c(1:9,11:16,18,19)])
+tf <- lapply(pa,function(i) {
+ # i=pa[1]
+  dat <-  sample_ann[,i]  
+  dat <- abs(log10(dat))
+  fivenum(dat)
+  (up <- mean(dat)+2*sd(dat))
+  (down <- mean(dat)- 2*sd(dat) ) 
+  valid <- ifelse(dat > down & dat < up, 1,0 ) 
+})
+
+tf <- do.call(cbind,tf)
+choosed_cells <- apply(tf,1,function(x) all(x==1))
+table(sample_ann$Biological_Condition)
+sample_ann=sample_ann[choosed_cells,]
+table(sample_ann$Biological_Condition)
+ct <- ct[,choosed_cells]
+```
+
+
+## 再探索基因表达情况
+
+```{r}
+ct[1:4,1:4] 
+counts <- ct
+fivenum(apply(counts,1,function(x) sum(x>0) ))
+boxplot(apply(counts,1,function(x) sum(x>0) ))
+fivenum(apply(counts,2,function(x) sum(x>0) ))
+hist(apply(counts,2,function(x) sum(x>0) ))
+choosed_genes=apply(counts,1,function(x) sum(x>0) )>0
+table(choosed_genes)
+counts <- counts[choosed_genes,]
+```
+
+## 接下来要利用自己的常规转录组数据分析知识
+
+### 看看细胞之间的所有的基因的表达量的相关性
+
+下面的计算，都是基于log后的表达矩阵。
+
+```{r}
+dat <- log2(edgeR::cpm(counts) + 1)
+dat[1:4, 1:4]
+dat_back <- dat
+```
+
+先备份这个表达矩阵，后面的分析都用得上
+
+```{r}
+exprSet <- dat_back
+colnames(exprSet)
+pheatmap::pheatmap(cor(exprSet))
+group_list <- sample_ann$Biological_Condition
+tmp <- data.frame(g = group_list)
+rownames(tmp) <-  colnames(exprSet)
+# 组内的样本的相似性应该是要高于组间的！
+pheatmap::pheatmap(cor(exprSet), annotation_col = tmp)
+dim(exprSet)
+exprSet = exprSet[apply(exprSet, 1, function(x)
+sum(x > 1) > 5), ]
+dim(exprSet)
+ 
+dim(exprSet)
+exprSet <-  exprSet[names(sort(apply(exprSet, 1, mad), decreasing = T)[1:500]), ]
+dim(exprSet)
+M <-cor(log2(exprSet + 1))
+tmp <- data.frame(g = group_list)
+rownames(tmp) <-  colnames(M)
+pheatmap::pheatmap(M, annotation_col = tmp)
+
+table(sample_ann$LibraryName)
+```
+
+
+可以看到,从细胞的相关性角度来看，到NPC跟另外的GW细胞群可以区分的很好，但是GW本身的3个小群体并没有那么好的区分度。
+
+而且简单选取top的sd的基因来计算相关性，并没有很明显的改善。
+
+但是可以看到每个细胞测了两次，所以它们的相关性要好于其它同类型的细胞。
+
+### 首先对表达矩阵进行简单的层次聚类
+
+如果计算机资源不够，这里可以先对基因进行一定程度的挑选，最简单的就是选取top的sd的基因，这里略。
+
+```{r}
+dat <- dat_back
+hc <- hclust(dist(t(dat))) 
+plot(hc,labels = FALSE)
+clus <-  cutree(hc, 4) #对hclust()函数的聚类结果进行剪枝，即选择输出指定类别数的系谱聚类结果。
+group_list <-  as.factor(clus) ##转换为因子属性
+table(group_list) ##统计频数
+table(group_list,sample_ann$Biological_Condition)   
+```
+
+可以看到GW16和GW21是很难区分开来的，如果是普通的层次聚类的话。
+
+### 然后看看最常规的PCA降维结果
+
+降维算法很多，详情可以去自行搜索学习，比如： 
+
+1. 主成分分析PCA
+2. 多维缩放(MDS)
+3. 线性判别分析(LDA)
+4. 等度量映射(Isomap)
+5. 局部线性嵌入(LLE)
+6. t-SNE
+7. Deep Autoencoder Networks
+
+这里只介绍 PCA 和 t-SNE
+
+```{r}
+dat <- dat_back
+dat <- t(dat)
+dat <- as.data.frame(dat)
+plate <- sample_ann$Biological_Condition # 这里定义分组信息
+dat <-  cbind(dat, plate) #cbind根据列进行合并，即叠加所有列 #矩阵添加批次信息
+dat[1:4, 1:4]
+table(dat$plate)
+
+# The variable plate (index = ) is removed
+# before PCA analysis
+dat.pca <- PCA(dat[, -ncol(dat)], graph = FALSE)
+head(dat.pca$var$coord) ## 每个主成分的基因重要性占比
+head(dat.pca$ind$coord) ## 每个细胞的前5个主成分取值。
+fviz_pca_ind(
+      dat.pca,
+      #repel =T,
+      geom.ind = "point",
+      # show points only (nbut not "text")
+      col.ind = dat$plate,
+      # color by groups
+      #palette = c("#00AFBB", "#E7B800"),
+      addEllipses = TRUE,
+      # Concentration ellipses
+      legend.title = "Groups"
+) 
+```
+
+同样的，很明显可以看到NPC跟另外的GW细胞群可以区分的很好，但是GW本身的3个小群体并没有那么好的区分度。
+
+### 接着是稍微高大上的tSNE降维
+
+因为计算量的问题，这里先选取PCA后的主成分，然进行tSNE，当然，也有其它做法，比如选取变化高的基因，显著差异基因等等。
+
+```{r }
+# 选取前面PCA分析的5个主成分。
+dat_matrix <- dat.pca$ind$coord
+# Set a seed if you want reproducible results
+set.seed(42)
+library(Rtsne) 
+# 如果使用原始表达矩阵进行 tSNE耗时很可怕，dat_matrix = dat_back
+# 出现Remove duplicates before running TSNE 则check_duplicated = FALSE
+# tsne_out <- Rtsne(dat_matrix,pca=FALSE,perplexity=30,theta=0.0, check_duplicates = FALSE) # Run TSNE
+tsne_out <- Rtsne(dat_matrix,perplexity=10)
+plate <- sample_ann$Biological_Condition # 这里定义分组信息
+plot(tsne_out$Y,col= rainbow(4)[as.numeric(as.factor(plate))], pch=19) 
+```
+
+### 对PCA或者tSNE结果进行kmeans或者dbscan算法聚类
+
+降维是降维，聚类是聚类，需要理解其中的区别。
+
+降维与否，不同的降维算法选择，不同参数的选择得到的结果都不一样。
+
+聚类也是一样，不同的算法，不同的参数。
+
+```{r}
+# 前面我们的层次聚类是针对全部表达矩阵，这里我们为了节省计算量，可以使用tsne_out$Y这个结果
+head(tsne_out$Y)
+opt_tsne=tsne_out$Y
+table(kmeans(opt_tsne,centers = 4)$clust)
+plot(opt_tsne,  col=kmeans(opt_tsne,centers = 4)$clust, pch=19, xlab="tSNE dim 1", ylab="tSNE dim 2")
+library(dbscan)
+plot(opt_tsne,  col=dbscan(opt_tsne,eps=3.1)$cluster, pch=19, xlab="tSNE dim 1", ylab="tSNE dim 2")
+table(dbscan(opt_tsne,eps=3.1)$cluster)
+# 比较两个聚类算法区别
+table(kmeans(opt_tsne,centers = 4)$clust,dbscan(opt_tsne,eps=3.1)$cluster)
+
+```
+
+
+
+## 测试一下M3Drop这个单细胞转录组R包
+
+### 首先构建M3Drop需要的对象
+
+```{r,message=F,warning=F}
+library(M3Drop) 
+Normalized_data <- M3DropCleanData(counts, 
+                                   labels = sample_ann$Biological_Condition , 
+                                   is.counts=TRUE, min_detected_genes=2000)
+dim(Normalized_data$data)
+length(Normalized_data$labels)
+class(Normalized_data)
+str(Normalized_data)
+```
+
+这个包设计比较简单，并没有构建S4对象，只是一个简单的list而已。 
+
+### 统计学算法 Michaelis-Menten
+
+需要深入读该文章，了解其算法，这里略过，总之它对单细胞转录组的表达矩阵进行了一系列的统计检验。
+
+```{r}
+fits <- M3DropDropoutModels(Normalized_data$data)
+
+# Sum absolute residuals
+data.frame(MM=fits$MMFit$SAr, Logistic=fits$LogiFit$SAr,
+           DoubleExpo=fits$ExpoFit$SAr) 
+# Sum squared residuals
+data.frame(MM=fits$MMFit$SSr, Logistic=fits$LogiFit$SSr,
+           DoubleExpo=fits$ExpoFit$SSr)
+```
+
+
+### 找差异基因
+
+```{r}
+DE_genes <- M3DropDifferentialExpression(Normalized_data$data, 
+                                         mt_method="fdr", mt_threshold=0.01)
+dim(DE_genes)
+head(DE_genes)
+```
+
+这里是针对上面的统计结果来的
+
+### 针对差异基因画热图
+
+```{r fig.width=10, fig.height=10}
+par(mar=c(1,1,1,1)) 
+heat_out <- M3DropExpressionHeatmap(DE_genes$Gene, Normalized_data$data, 
+                                    cell_labels = Normalized_data$labels)
+```
+
+可视化了解一下找到的差异基因在不同的细胞类型的表达分布情况。
+
+### 聚类
+
+这里可以重新聚类后，针对自己找到的类别来分别找marker基因，不需要使用测试数据自带的表型信息。
+ 
+```{r} 
+cell_populations <- M3DropGetHeatmapCellClusters(heat_out, k=4)
+library("ROCR") 
+marker_genes <- M3DropGetMarkers(Normalized_data$data, cell_populations)
+table(cell_populations,Normalized_data$labels)
+```
+
+### 每个类别的marker genes
+
+```{r}
+head(marker_genes[marker_genes$Group==4,],20) 
+marker_genes[rownames(marker_genes)=="FOS",] 
+```
+
+也可以针对这些 marker genes去画热图，当然，得根据AUC和P值来挑选符合要求的差异基因去绘图。
+
+```{r fig.width=10, fig.height=10}
+par(mar=c(1,1,1,1)) 
+choosed_marker_genes=as.character(unlist(lapply(split(marker_genes,marker_genes$Group), function(x) (rownames(head(x,20))))))
+heat_out <- M3DropExpressionHeatmap(choosed_marker_genes, Normalized_data$data, cell_labels =  cell_populations)
+```
+
+如果遇到`Error in plot.new() : figure margins too large`报错，则单独将`heat_out`这行命令复制出来运行
+
+## 对感兴趣基因集进行注释
+
+通常是GO/KEGG等数据库，通常是超几何分布，GSEA,GSVA等算法。
+
+这里就略过。
+
+
+## 显示运行环境
+
+```{r}
+sessionInfo()
+```
+
+

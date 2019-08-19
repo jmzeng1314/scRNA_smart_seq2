@@ -1,0 +1,474 @@
+---
+title: "Study_monocle3"
+author: "jmzeng1314@163.com"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(message  = F) 
+```
+
+
+## 引言
+
+教程，当然是以官网为主，不过看英文笔记有挑战，简略带领大家一起学习咯：http://cole-trapnell-lab.github.io/monocle-release/docs/
+
+更多教程在：http://cole-trapnell-lab.github.io/monocle-release/tutorials/
+
+
+值得注意的是这里展现的是monocle2版本的使用教程，因为monocle3仍然是不那么稳定。
+
+## 载入必要的R包
+
+需要自行下载安装一些必要的R包！这里就是Monocle咯，因为大量学员在中国大陆，通常不建议大家使用下面的R包安装方法，建议是切换镜像后再下载R包。参考：http://www.bio-info-trainee.com/3727.html
+
+
+```{r}
+if (!requireNamespace("BiocManager"))
+    install.packages("BiocManager")
+if (!requireNamespace("monocle"))
+    BiocManager::install("monocle")
+```
+
+加载R包
+
+```{r}
+rm(list = ls()) # clear the environment
+#load all the necessary libraries
+options(warn=-1) # turn off warning message globally
+suppressMessages(library(monocle))
+
+```
+
+
+## 创建数据集
+
+后续分析的前提就是将数据构建成monocle需要的对象。
+
+因此这里先介绍一下monocle需要的用来构建 CellDataSet 对象的三个数据集
+
+- 表达量矩阵`exprs`:数值矩阵 行名是基因, 列名是细胞编号.
+- 细胞的表型信息`phenoData`: 第一列是细胞编号，其他列是细胞的相关信息
+- 基因注释`featureData`: 第一列是基因编号, 其他列是基因对应的信息
+
+并且这三个数据集要满足如下要求:
+
+表达量矩阵**必须**：
+
+- 保证它的列数等于`phenoData`的行数
+- 保证它的行数等于`featureData`的行数
+
+而且
+
+- `phenoData`的行名需要和表达矩阵的列名匹配
+- `featureData`和表达矩阵的行名要匹配
+- `featureData`至少要有一列"gene_short_name", 就是基因的symbol
+
+如下是几个例子
+
+### 测试数据集
+
+该R包团队给出的例子有点可怕。
+
+需要使用网络公共数据，取决于网速，是浙江大学郭老师的40万小鼠单细胞转录组数据。
+
+第一个rds文件大小接近3G，太难下载了，即使侥幸下载，一般人的电脑也没办法处理它。
+
+下载地址:
+
+- <http://trapnell-lab.gs.washington.edu/public_share/MCA_merged_mat.rds>
+- <http://trapnell-lab.gs.washington.edu/public_share/MCA_All-batch-removed-assignments.csv>
+
+第二个csv文件也有 26.5M
+
+- <https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE72857>
+
+
+```{r,eval=F}
+MCA <- readRDS("./MCA_merged_mat.rds")
+cell.meta.data <- read.csv("./MCA_All-batch-removed-assignments.csv", row.names = 1)
+```
+
+39855 x 405191 sparse Matrix of class "dgCMatrix"
+ 
+```{r,eval=F}
+ class(MCA)
+## 这是一个对象，需要仔细理解，这里略
+```
+
+```{r,eval=F}
+overlapping_cells <- intersect(row.names(cell.meta.data), colnames(MCA))
+gene_ann <- data.frame(gene_short_name = row.names(MCA), row.names = row.names(MCA))
+
+pd <- new("AnnotatedDataFrame",
+          data=cell.meta.data[overlapping_cells, ])
+fd <- new("AnnotatedDataFrame",
+          data=gene_ann)
+```
+
+下面构造了一个MCA数据集的子集，基于：overlapping_cells
+
+```{r,eval=FALSE}
+MCA_cds <- newCellDataSet(
+  MCA[, overlapping_cells], 
+  phenoData = pd,
+  featureData =fd,
+  expressionFamily = negbinomial.size(),
+  lowerDetectionLimit=1)
+
+save(MCA_cds,file = './MCA_cds_monocle_example.Rdata')
+    
+```
+
+全部载入后的数据在R里面如下：
+
+![](figures/MCA_dataset_in_R.jpg)
+
+但是数据集实在是太大，我这里只能载入前面步骤保存的小数据集。
+
+```{r,eval=FALSE}
+## 这个文件很大，我放在了Rmd路径下面。
+load(file = './MCA_cds_monocle_example.Rdata')
+# 所以你们运行这个代码是没有意义的，因为这个文件MCA_cds_monocle_example.Rdata仅仅是存在于我的电脑
+MCA_cds
+# 是一个 CellDataSet 对象， 有着24万的单细胞，演示软件用法实在是太难
+```
+
+这里需要学习 CellDataSet 对象，就跟之前GEO视频教程教大家的 ExpressionSet 对象类似，可以看到这里的数据集仍然是24万细胞，有点可怕。
+
+###  scRNAseq R包中的数据集
+
+比如我们选择 scRNAseq 这个R包。
+这个包内置的是 Pollen et al. 2014 数据集，人类单细胞细胞，分成`4`类，分别是 pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞。 
+
+大小是50.6 MB，下载需要一点点时间，先安装加载它们。
+
+这个数据集很出名，截止2019年1月已经有近400的引用了，后面的人开发R包算法都会在其上面做测试，比如 SinQC 这篇文章就提到：We applied SinQC to a highly heterogeneous scRNA-seq dataset containing 301 cells (mixture of 11 different cell types) (Pollen et al., 2014).
+
+不过本例子只使用了数据集的`4种细胞类型`而已，因为 scRNAseq 这个R包就提供了这些，完整的数据是 23730 features，
+301 samples 在 https://hemberg-lab.github.io/scRNA.seq.datasets/human/tissues/ 
+
+
+这里面的表达矩阵是由 RSEM (Li and Dewey 2011) 软件根据 hg38 RefSeq transcriptome 得到的，总是130个文库，每个细胞测了两次，测序深度不一样。
+
+
+```{r}
+library(scRNAseq)
+## ----- Load Example Data -----
+data(fluidigm)
+# Set assay to RSEM estimated counts
+assay(fluidigm)  <-  assays(fluidigm)$rsem_counts
+ct <- floor(assays(fluidigm)$rsem_counts)
+ct[1:4,1:4] 
+sample_ann <- as.data.frame(colData(fluidigm))
+```
+
+准备Monocle对象需要的phenotype data 和 feature data 以及表达矩阵，从 scRNAseq 这个R包里面提取这三种数据。
+
+```{r}
+gene_ann <- data.frame(
+  gene_short_name = row.names(ct), 
+  row.names = row.names(ct)
+)
+
+pd <- new("AnnotatedDataFrame",
+          data=sample_ann)
+fd <- new("AnnotatedDataFrame",
+          data=gene_ann)
+```
+
+构建Monocle后续分析的所用对象，主要是根据包的说明书，仔细探索其需要的构建对象的必备元素
+
+**注意点**: 因为表达矩阵是counts值，所以注意 expressionFamily 参数
+
+```{r}
+sc_cds <- newCellDataSet(
+  ct, 
+  phenoData = pd,
+  featureData =fd,
+  expressionFamily = negbinomial.size(),
+  lowerDetectionLimit=1)
+sc_cds
+```
+
+下面是monocle对新构建的CellDataSet 对象的标准操作.
+
+> estimateDispersions这步的时间和电脑配置密切相关，甚至如果电脑内存不够，还会报错
+
+```{r}
+library(dplyr)
+colnames(phenoData(sc_cds)@data)
+## 为了电脑的健康，我这里选择小数据集。 
+sc_cds <- estimateSizeFactors(sc_cds)
+sc_cds <- estimateDispersions(sc_cds)
+```
+
+### 本地加载RPKM数据
+
+你也可以从本地RPKM值文件读入R语言后构造 CellDataSet 对象，下面是简单的例子：
+
+```{r,eval=FALSE}
+#do not run
+HSMM_expr_matrix <- read.table("fpkm_matrix.txt")
+HSMM_sample_sheet <- read.delim("cell_sample_sheet.txt")
+HSMM_gene_annotation <- read.delim("gene_annotations.txt")
+# Once these tables are loaded, you can create the CellDataSet object like this:
+
+pd <- new("AnnotatedDataFrame", data = HSMM_sample_sheet)
+fd <- new("AnnotatedDataFrame", data = HSMM_gene_annotation)
+HSMM <- newCellDataSet(as.matrix(HSMM_expr_matrix),
+    phenoData = pd, featureData = fd)
+```
+
+
+值得注意的是，因为monocle和前面我们讲解的scater，还有seurat，它们基于的对象都不一样，所以monocle干脆提供了转换函数：
+
+```{r,eval=FALSE}
+# 加入你把上面的 HSMM 赋值给 lung ，然后使用函数进行转换：
+lung  <-  HSMM
+# To convert to Seurat object
+lung_seurat <- exportCDS(lung, 'Seurat')
+
+# To convert to SCESet
+lung_SCESet <- exportCDS(lung, 'Scater')
+```
+
+###  直接读取10X结果
+
+因为10X实在是太流行了，所以monocle跟seurat一样，也提供了直接读取10X上游分析结果的接口函数（其实是使用另外一个R包），因为本文数据来源于smart-seq2，所以并**不演示**下面的代码：
+
+```{r,eval=FALSE}
+cellranger_pipestance_path <- "/path/to/your/pipeline/output/directory"
+gbm <- load_cellranger_matrix(cellranger_pipestance_path)
+
+fd <- fData(gbm)
+
+# The number 2 is picked arbitrarily in the line below.
+# Where "2" is placed you should place the column number that corresponds to your
+# featureData's gene short names.
+
+colnames(fd)[2] <- "gene_short_name"
+
+gbm_cds <- newCellDataSet(exprs(gbm),
+                  phenoData = new("AnnotatedDataFrame", data = pData(gbm)),
+                  featureData = new("AnnotatedDataFrame", data = fd),
+                  lowerDetectionLimit = 0.5,
+                  expressionFamily = negbinomial.size())
+```
+
+
+## 假设使用monocle3版本
+
+你首先需要使用下面的代码，安装monocle3并不是一件容易的事情，然后函数基本上也全部修改了，当然，具体教程以官网为主：http://cole-trapnell-lab.github.io/monocle-release/monocle3/  
+
+Windows平台如果要安装Monocle3，需要配置Anaconda环境以及很多的环境变量，因此目前不推荐在Windows上安装。另外该版本目前很不稳定，所以不建议使用最新版本。
+
+我这里仍然是演示monocle2，所以下面代码**千万不要运行**，仅仅作为演示而已。
+
+```{r,eval=FALSE}
+devtools::install_github("cole-trapnell-lab/monocle-release", ref="monocle3_alpha")
+library(monocle)
+cds <- sc_cds
+cds <- estimateSizeFactors(cds)
+cds <- estimateDispersions(cds)
+cds <- preprocessCDS(cds, num_dim = 20)
+cds <- reduceDimension(cds, reduction_method = 'UMAP')
+cds <- partitionCells(cds)
+cds <- learnGraph(cds,  RGE_method = 'SimplePPT')
+plot_cell_trajectory(cds,
+                     color_by = "cell_type2") +
+                     scale_color_manual(values = cell_type_color)
+```
+
+
+## 首先是质控
+
+这里通常也是对基因 和 细胞进行质控，质控指标需要根据项目来进行具体探索，这里只是演示一下用法。
+
+```{r}
+cds=sc_cds
+cds
+## 起初是： 26255 features, 130 samples 
+cds <- detectGenes(cds, min_expr = 0.1)
+print(head(fData(cds)))
+expressed_genes <- row.names(subset(fData(cds),
+                                    num_cells_expressed >= 5))
+length(expressed_genes)
+cds <- cds[expressed_genes,]
+cds
+# 过滤基因后是：assayData: 13385 features, 130 samples 
+print(head(pData(cds)))
+tmp=pData(cds)
+fivenum(tmp[,1])
+fivenum(tmp[,30])
+# 这里并不需要过滤细胞，如果想过滤，就自己摸索阈值，然后挑选细胞即可。
+valid_cells <- row.names(pData(cds) )
+cds <- cds[,valid_cells]
+cds 
+```
+
+
+
+## 聚类
+
+单细胞转录组最重要的就是把细胞分群啦，这里可供选择的算法非常多，我们首先演示PCA结果。
+
+```{r}
+# 并不是所有的基因都有作用，所以先进行挑选，合适的基因用来进行聚类。
+disp_table <- dispersionTable(cds)
+unsup_clustering_genes <- subset(disp_table, mean_expression >= 0.1)
+cds <- setOrderingFilter(cds, unsup_clustering_genes$gene_id)
+plot_ordering_genes(cds) 
+plot_pc_variance_explained(cds, return_all = F) # norm_method='log'
+# 其中 num_dim 参数选择基于上面的PCA图
+cds <- reduceDimension(cds, max_components = 2, num_dim = 6,
+                        reduction_method = 'tSNE', verbose = T)
+cds <- clusterCells(cds, num_clusters = 4) 
+plot_cell_clusters(cds, 1, 2, color = "Biological_Condition")
+table(pData(cds)$Biological_Condition)
+
+```
+
+可以看到，GW21 也是被打散在其它分组里面。
+
+值得注意的是：这里选择不同的PC个数进行后续分析，是会影响聚类结果的
+具体可以参考：https://davetang.org/muse/2017/10/01/getting-started-monocle/
+
+## 排除干扰因素后聚类
+
+跟前面的质控步骤一样，所谓的干扰因素，也是看自己对数据集的认识情况来自己摸索的，比如我们这里
+
+```{r}
+tmp=pData(cds)
+fivenum(tmp[,1])
+fivenum(tmp[,30])
+colnames(tmp)
+# 放在 residualModelFormulaStr 里面的是需要去除的
+cds <- reduceDimension(cds, max_components = 2, num_dim = 2,
+                        reduction_method = 'tSNE',
+                        residualModelFormulaStr = "~Biological_Condition + num_genes_expressed",
+                        verbose = T)
+cds <- clusterCells(cds, num_clusters = 2)
+plot_cell_clusters(cds, 1, 2, color = "Biological_Condition")
+
+## 上面去除了Biological_Condition，所以接下来聚类它们就被打散了。
+
+cds <- reduceDimension(cds, max_components = 2, num_dim = 2,
+                        reduction_method = 'tSNE',
+                        residualModelFormulaStr = "~NREADS + num_genes_expressed",
+                        verbose = T)
+cds <- clusterCells(cds, num_clusters = 2)
+plot_cell_clusters(cds, 1, 2, color = "Biological_Condition")
+```
+ 
+
+## 差异分析
+
+这个是转录组数据的常规分析了，在单细胞转录组领域也是如此，monocle这个包提供 differentialGeneTest 函数来做差异分析，作用就是挑选那些在某些类别细胞里面高表达的基因，假设其为那一组细胞的marker基因。
+
+在我们的例子里面可以是已知的细胞分类，或者是自己推断的聚类结果。
+
+这一步时间会比较久，也可以不给定分组信息，使用reduced model来计算各个基因的差异与否，是另外一种算法了。
+
+```{r}
+Sys.time()
+diff_test_res <- differentialGeneTest(cds,
+                                      fullModelFormulaStr = "~Biological_Condition")
+Sys.time()
+# 可以看到运行耗时
+
+# Select genes that are significant at an FDR < 10%
+sig_genes <- subset(diff_test_res, qval < 0.1)
+head(sig_genes[,c("gene_short_name", "pval", "qval")] )
+```
+
+```{r}
+cg=as.character(head(sig_genes$gene_short_name))
+plot_genes_jitter(cds[cg,], 
+                  grouping = "Biological_Condition", ncol= 2)
+```
+
+下面是不同的可视化参数的效果
+
+```{r}
+plot_genes_jitter(cds[cg,],
+                  grouping = "Biological_Condition",
+                  color_by = "Biological_Condition",
+                  nrow= 3,
+                  ncol = NULL )
+```
+
+这个时候可以考虑去选用多个差异分析R包来进行不同的比较，见我在单细胞天地的推文
+
+## 寻找marker基因
+
+使用起来有点复杂，需要预先给定好分组情况，具体大家自行看说明书吧，反正3个R包其实是共通的。
+
+## 推断发育轨迹
+
+前面介绍的monocle的功能都只能说是中规中矩，而这个推断发育轨迹才是monocle的拿手好戏，也是它荣升为3大R包的核心竞争力。
+
+
+第一步: 挑选合适的基因. 有多个方法，例如提供已知的基因集，这里选取统计学显著的差异基因列表
+
+```{r}
+ordering_genes <- row.names (subset(diff_test_res, qval < 0.01))
+cds <- setOrderingFilter(cds, ordering_genes)
+plot_ordering_genes(cds)
+cds <- reduceDimension(cds, max_components = 2,
+                            method = 'DDRTree')
+
+```
+
+第二步: 降维。降维的目的是为了更好的展示数据。函数里提供了很多种方法, 不同方法的最后展示的图都不太一样, 其中“DDRTree”是Monocle2使用的默认方法
+
+```{r}
+cds <- reduceDimension(cds, max_components = 2,
+                            method = 'DDRTree')
+```
+
+第三步: 对细胞进行排序
+
+```{r}
+cds <- orderCells(cds)
+
+```
+
+最后两个可视化函数，对结果进行可视化
+
+```{r}
+plot_cell_trajectory(cds, color_by = "Biological_Condition")  
+```
+
+可以很明显看到细胞的发育轨迹，正好对应  pluripotent stem cells 分化而成的 neural progenitor cells (“NPC”) ，还有 “GW16” and “GW21” ，“GW21+3” 这种孕期细胞。 
+
+
+`plot_genes_in_pseudotime`可以展现marker基因，本例子随便选取了6个差异表达基因。
+
+```{r}
+plot_genes_in_pseudotime(cds[cg,],
+                         color_by = "Biological_Condition")
+
+
+```
+
+最开始挑选合适基因，除了我们演示的找统计学显著的差异表达基因这个方法外，还可以于已知的标记基因，主要是基于生物学背景知识。
+
+如果是已知基因列表，就需要自己读取外包文件，导入R里面来分析。
+
+## 显示运行环境
+
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
+

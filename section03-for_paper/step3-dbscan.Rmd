@@ -1,0 +1,228 @@
+---
+title: "step3-dbscan"
+author: "jmzeng1314@163.com"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(message  = F) 
+```
+
+## 首先载入上一步的RPKM矩阵
+
+```{r}
+load('last-RPKM.Rdata')
+#run t-SNE 50 times and select the optimal run based on the itercosts parameter
+#subgroups of cells are assigned by dbscan
+library(Rtsne)
+N_tsne <- 50
+tsne_out <- list(length = N_tsne)
+KL <- vector(length = N_tsne)
+set.seed(1234)
+```
+
+## 然后进行50次tsne降维
+
+因为运行耗时很可观，所以我们保存运行结果到文件，以便重复使用。
+
+```{r,eval=FALSE}
+for(k in 1:N_tsne)
+{
+  tsne_out[[k]]<-Rtsne(t(log10(RPKM+1)),initial_dims=30,verbose=FALSE,check_duplicates=FALSE,
+                       perplexity=27, dims=2,max_iter=5000)
+  KL[k]<-tail(tsne_out[[k]]$itercosts,1)
+  print(paste0("FINISHED ",k," TSNE ITERATION"))
+}
+names(KL) <- c(1:N_tsne)
+save(tsne_out,KL,file = 'tsne_out.Rdata')
+```
+
+## 查看最佳tsne结果
+
+```{r}
+load(file = 'tsne_out.Rdata')
+opt_tsne <- tsne_out[[as.numeric(names(KL)[KL==min(KL)])]]$Y
+opt_tsne_full<-tsne_out[[as.numeric(names(KL)[KL==min(KL)])]]
+head(opt_tsne)
+```
+
+## 对tsne结果进行kmeans
+
+```{r}
+table(kmeans(opt_tsne,centers = 4)$clust)
+plot(opt_tsne,  col=kmeans(opt_tsne,centers = 4)$clust, pch=19, xlab="tSNE dim 1", ylab="tSNE dim 2")
+```
+
+
+## 对tsne结果进行dbscan
+
+```{r}
+
+library(dbscan)
+plot(opt_tsne,  col=dbscan(opt_tsne,eps=3.1)$cluster, pch=19, xlab="tSNE dim 1", ylab="tSNE dim 2")
+table(dbscan(opt_tsne,eps=3.1)$cluster)
+# 比较两个聚类算法区别
+table(kmeans(opt_tsne,centers = 4)$clust,dbscan(opt_tsne,eps=3.1)$cluster)
+
+```
+
+
+## 得到最后的分组信息
+
+有一个样本是离群点，把它归入到细胞数量最多的那个组别。
+
+```{r}
+library(dbscan)
+CAFgroups<-dbscan(opt_tsne,eps=3.1)$cluster
+CAFgroups_full<-dbscan(opt_tsne,eps=3.1)
+CAFgroups[CAFgroups==0]<-1
+CAFgroups_full$cluster[CAFgroups_full$cluster==0]<-1
+plot(opt_tsne,  col=CAFgroups, pch=19, xlab="tSNE dim 1", ylab="tSNE dim 2")
+```
+
+
+## 直接PCA看看dbscan聚类效果
+
+```{r}
+RPKM.PCA<-prcomp(log2(t(RPKM)+1), center=TRUE)
+plot(RPKM.PCA$x,main="first PCA", pch=19, col=CAFgroups)
+save(CAFgroups,CAFgroups_full,file='CAFgroups.Rdata')
+```
+
+
+## 表达量的可视化(散点图)
+
+首先作者自定义了一个绘图函数, 接受基因名字，tsne的坐标矩阵，以及表达量矩阵。
+
+```{r}
+#feature plots represent gene expression for each cell on the t-SNE display. 
+# It requires the name of the gene as a string, 
+# the output of Rtsne and the expression matrix with rownames representing the gene names.
+plot.feature2<-function(gene, tsne.output=tsne.out, DATAuse=DATA){
+  plot.frame<-data.frame(x=tsne.output$Y[,1], y=tsne.output$Y[,2], log2expr=as.numeric(log2(DATAuse[gene,]+1)))
+  
+  
+  p<-ggplot(plot.frame,aes(x=x, y=y, col=log2expr))+
+    geom_point(size=1) +
+    labs(title=paste(gene))+
+    theme_classic()+
+    scale_color_gradientn(colors = c("#FFFF00", "#FFD000","#FF0000","#360101"), limits=c(0,14))+
+    theme(axis.title = element_blank())+
+    theme(axis.text = element_blank())+
+    theme(axis.line = element_blank())+
+    theme(axis.ticks = element_blank())+
+    theme(plot.title = element_text(size=20,face="italic"))+
+    theme(legend.title  = element_blank())+
+    
+    
+    theme(legend.position = "none")
+  
+  
+  
+  
+  return(p)
+}
+
+```
+
+就可以根据基因名，从表达量矩阵里面获取该基因的表达情况，然后把tsne的坐标矩阵绘制在画布后，使用该基因的表达量化值来上颜色。
+
+```{r}
+load(file = 'tsne_out.Rdata')
+library(ggplot2)
+opt_tsne <- tsne_out[[as.numeric(names(KL)[KL==min(KL)])]]$Y
+opt_tsne_full<-tsne_out[[as.numeric(names(KL)[KL==min(KL)])]]
+load(file='RPKM.full.Rdata')
+load(file='CAFgroups.Rdata')
+plot.feature2("Pdgfra", opt_tsne_full, RPKM.full)
+
+```
+
+## 表达量的可视化(小提琴图)
+
+首先作者自定义了一个绘图函数, 接受基因名字，tsne的坐标矩阵，以及表达量矩阵。
+
+```{r}
+#violin plots represent gene expression for each subpopulation. The color of each violin represents the mean gene expression after log2 transformation.
+#gene: Gene name of interest as string. DATAuse: Gene expression matrix with rownames containing gene names. tsne.popus = dbscan output, axis= if FALSE no axis is printed. legend_position= default "none" indicates where legend is plotted. gene_name = if FALSE gene name will not be included in the plot.
+plot.violin2 <- function(gene, DATAuse, tsne.popus, axis=FALSE, legend_position="none", gene_name=FALSE){
+  
+  testframe<-data.frame(expression=as.numeric(DATAuse[paste(gene),]), Population=tsne.popus$cluster)
+  testframe$Population <- as.factor(testframe$Population)
+  colnames(testframe)<-c("expression", "Population")
+  
+  col.mean<-vector()
+  for(i in levels(testframe$Population)){
+    col.mean<-c(col.mean,mean(testframe$expression[which(testframe$Population ==i)]))
+  }
+  col.mean<-log2(col.mean+1)
+  
+  col.means<-vector()
+  
+  for(i in testframe$Population){
+    col.means<-c(col.means,col.mean[as.numeric(i)])
+  }
+  testframe$Mean<-col.means
+  testframe$expression<-log2(testframe$expression+1)
+  
+  
+  
+  p <- ggplot(testframe, aes(x=Population, y=expression, fill= Mean, color=Mean))+
+    geom_violin(scale="width") +
+    labs(title=paste(gene), y ="log2(expression)", x="Population")+
+    theme_classic() +
+    
+    
+    
+    
+    scale_color_gradientn(colors = c("#FFFF00", "#FFD000","#FF0000","#360101"), limits=c(0,14))+
+    scale_fill_gradientn(colors = c("#FFFF00", "#FFD000","#FF0000","#360101"), limits=c(0,14))+
+    
+    theme(axis.title.y =  element_blank())+
+    theme(axis.ticks.y =  element_blank())+
+    theme(axis.line.y =   element_blank())+
+    theme(axis.text.y =   element_blank())+
+    theme(axis.title.x = element_blank())+
+    
+    
+    theme(legend.position=legend_position )
+  
+  if(axis == FALSE){
+    p<-p+
+      theme( axis.line.x=element_blank(),
+             axis.text.x = element_blank(),
+             axis.ticks.x = element_blank())
+    
+  }
+  
+  if(gene_name == FALSE){
+    p<-p+  theme(plot.title = element_blank())   
+  }else{ p<-p + theme(plot.title = element_text(size=10,face="bold"))}
+  
+  p
+  
+}
+
+```
+
+
+定义好绘图函数后，理论上可以绘制任意基因的表达量在不同的聚类的分组表达情况
+
+```{r}
+plot.violin2(gene = "Pdgfra", DATAuse = RPKM.full, tsne.popus = CAFgroups_full)
+
+
+```
+
+
+## 显示运行环境
+
+```{r}
+sessionInfo()
+```
+
+
+
